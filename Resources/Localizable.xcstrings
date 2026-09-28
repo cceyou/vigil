@@ -1,0 +1,1337 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "%d of %d checks passed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d z %d kontrol prošlo"
+          }
+        }
+      }
+    },
+    "%d sessions working. Your Mac stays awake, even with the lid closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Počet pracujících relací: %d. Mac zůstane vzhůru, i se zavřeným víkem."
+          }
+        }
+      }
+    },
+    "1 session working. Your Mac stays awake, even with the lid closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 relace pracuje. Mac zůstane vzhůru, i se zavřeným víkem."
+          }
+        }
+      }
+    },
+    "A closed laptop in a bag overheats. Keep it on a flat surface, ideally plugged in.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zavřený notebook v batohu se přehřívá. Nechte ho na rovné ploše, ideálně připojený k napájení."
+          }
+        }
+      }
+    },
+    "A fake hook event went through hook.sh to the app in %d ms": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testovací událost prošla přes hook.sh do aplikace za %d ms"
+          }
+        }
+      }
+    },
+    "A permission prompt or question from Claude Code.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Žádost o oprávnění nebo otázka od Claude Code."
+          }
+        }
+      }
+    },
+    "Add hooks": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přidat hooky"
+          }
+        }
+      }
+    },
+    "Adds hooks to ~/.claude/settings.json (backed up first).": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přidá hooky do ~/.claude/settings.json (nejdřív se zálohuje)."
+          }
+        }
+      }
+    },
+    "All checks passed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Všechny kontroly prošly"
+          }
+        }
+      }
+    },
+    "All hooks are in settings.json and hook.sh is installed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Všechny hooky jsou v settings.json a hook.sh je nainstalovaný"
+          }
+        }
+      }
+    },
+    "Allow": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Povolit"
+          }
+        }
+      }
+    },
+    "Allow notifications": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Povolit oznámení"
+          }
+        }
+      }
+    },
+    "Already-running Claude Code sessions must be restarted to load new hooks.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Už spuštěné relace Claude Code je nutné restartovat, aby načetly nové hooky."
+          }
+        }
+      }
+    },
+    "Armed · waiting for Claude": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Připraveno · čeká na Claude"
+          }
+        }
+      }
+    },
+    "Back": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zpět"
+          }
+        }
+      }
+    },
+    "Battery is low": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slabá baterie"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zrušit"
+          }
+        }
+      }
+    },
+    "Cancelled": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zrušeno"
+          }
+        }
+      }
+    },
+    "Checks permission, hooks, socket, a fake hook event and notifications.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zkontroluje oprávnění, hooky, socket, testovací událost a oznámení."
+          }
+        }
+      }
+    },
+    "Claude Code has finished": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code dokončil práci"
+          }
+        }
+      }
+    },
+    "Claude Code has finished.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code dokončil práci."
+          }
+        }
+      }
+    },
+    "Claude Code hooks": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hooky Claude Code"
+          }
+        }
+      }
+    },
+    "Claude is working · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude pracuje · %@"
+          }
+        }
+      }
+    },
+    "Clear": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smazat"
+          }
+        }
+      }
+    },
+    "Could not change launch at login: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nepodařilo se změnit spuštění při přihlášení: %@"
+          }
+        }
+      }
+    },
+    "Could not open the hook socket: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nepodařilo se otevřít socket pro hooky: %@"
+          }
+        }
+      }
+    },
+    "Couldn't change sleep settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nepodařilo se změnit nastavení spánku"
+          }
+        }
+      }
+    },
+    "Diagnostics": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostika"
+          }
+        }
+      }
+    },
+    "Dry run": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zkušební režim"
+          }
+        }
+      }
+    },
+    "Enable": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapnout"
+          }
+        }
+      }
+    },
+    "Ended": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skončila"
+          }
+        }
+      }
+    },
+    "Failsafe: restore normal sleep and sleep after this long.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pojistka: po této době se obnoví běžný spánek a Mac se uspí."
+          }
+        }
+      }
+    },
+    "Finished sessions appear here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zde se objeví dokončené relace."
+          }
+        }
+      }
+    },
+    "General": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obecné"
+          }
+        }
+      }
+    },
+    "Goes through the whole flow but only logs; never calls pmset.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projde celým během, ale jen zapisuje do logu; pmset nikdy nevolá."
+          }
+        }
+      }
+    },
+    "Grace period": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odklad před spánkem"
+          }
+        }
+      }
+    },
+    "History": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Historie"
+          }
+        }
+      }
+    },
+    "Hook round trip": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Průchod hooku"
+          }
+        }
+      }
+    },
+    "Hook socket": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Socket pro hooky"
+          }
+        }
+      }
+    },
+    "Hooks installed. Restart running Claude Code sessions so they load the new hooks.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hooky jsou nainstalované. Restartujte běžící relace Claude Code, aby je načetly."
+          }
+        }
+      }
+    },
+    "Hooks removed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hooky odebrány"
+          }
+        }
+      }
+    },
+    "How long to wait after Claude finishes before sleeping.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jak dlouho čekat po dokončení práce Claude, než se Mac uspí."
+          }
+        }
+      }
+    },
+    "Idle": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nečinná"
+          }
+        }
+      }
+    },
+    "Install": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nainstalovat"
+          }
+        }
+      }
+    },
+    "Install hooks": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nainstalovat hooky"
+          }
+        }
+      }
+    },
+    "Install permission": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nainstalovat oprávnění"
+          }
+        }
+      }
+    },
+    "Install sleep permission": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nainstalovat oprávnění ke spánku"
+          }
+        }
+      }
+    },
+    "Installed in /etc/sudoers.d/vigil": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nainstalováno v /etc/sudoers.d/vigil"
+          }
+        }
+      }
+    },
+    "Interrupted": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přerušena"
+          }
+        }
+      }
+    },
+    "Keep awake": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nechat vzhůru"
+          }
+        }
+      }
+    },
+    "Keep awake for 1 h": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nechat vzhůru 1 hodinu"
+          }
+        }
+      }
+    },
+    "Keep the Mac awake while Claude works, then sleep it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Udrží Mac vzhůru, dokud Claude pracuje, a pak ho uspí."
+          }
+        }
+      }
+    },
+    "Keeping awake": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drží se vzhůru"
+          }
+        }
+      }
+    },
+    "Keeping awake for another %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zůstane vzhůru ještě %@"
+          }
+        }
+      }
+    },
+    "Keeping awake manually. The lid can stay closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ruční udržování vzhůru. Víko může zůstat zavřené."
+          }
+        }
+      }
+    },
+    "Last %d sessions": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Posledních %d relací"
+          }
+        }
+      }
+    },
+    "Launch at login": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spustit při přihlášení"
+          }
+        }
+      }
+    },
+    "Log": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log"
+          }
+        }
+      }
+    },
+    "Low battery threshold": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Práh slabé baterie"
+          }
+        }
+      }
+    },
+    "Maximum keep-awake time": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maximální doba bdění"
+          }
+        }
+      }
+    },
+    "Maximum keep-awake time reached": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dosažena maximální doba bdění"
+          }
+        }
+      }
+    },
+    "Missing hooks: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chybějící hooky: %@"
+          }
+        }
+      }
+    },
+    "No Claude Code sessions yet": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zatím žádné relace Claude Code"
+          }
+        }
+      }
+    },
+    "Not installed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Není nainstalováno"
+          }
+        }
+      }
+    },
+    "Nothing is listening on the socket": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na socketu nikdo neposlouchá"
+          }
+        }
+      }
+    },
+    "Notifications": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oznámení"
+          }
+        }
+      }
+    },
+    "Notifications are authorized": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oznámení jsou povolená"
+          }
+        }
+      }
+    },
+    "Notifications are not authorized": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oznámení nejsou povolená"
+          }
+        }
+      }
+    },
+    "Notifications are off. Enable them in System Settings > Notifications > Vigil.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oznámení jsou vypnutá. Zapněte je v Nastavení systému > Oznámení > Vigil."
+          }
+        }
+      }
+    },
+    "On battery below this level Vigil restores sleep and sleeps at once.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na baterii pod touto úrovní Vigil obnoví spánek a Mac okamžitě uspí."
+          }
+        }
+      }
+    },
+    "One-time admin password so Vigil can keep the Mac awake with the lid closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jednorázové heslo správce, aby Vigil mohl držet Mac vzhůru i se zavřeným víkem."
+          }
+        }
+      }
+    },
+    "Only sleep if the lid is closed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uspat jen při zavřeném víku"
+          }
+        }
+      }
+    },
+    "Open log": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otevřít log"
+          }
+        }
+      }
+    },
+    "Overview": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přehled"
+          }
+        }
+      }
+    },
+    "Permissions and hooks": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oprávnění a hooky"
+          }
+        }
+      }
+    },
+    "Present in ~/.claude/settings.json": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přítomno v ~/.claude/settings.json"
+          }
+        }
+      }
+    },
+    "Quit Vigil": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ukončit Vigil"
+          }
+        }
+      }
+    },
+    "Remove": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odebrat"
+          }
+        }
+      }
+    },
+    "Remove hooks": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odebrat hooky"
+          }
+        }
+      }
+    },
+    "Restart Claude Code sessions that are already running so they load the new hooks.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restartujte už běžící relace Claude Code, aby načetly nové hooky."
+          }
+        }
+      }
+    },
+    "Restart listener": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restartovat naslouchání"
+          }
+        }
+      }
+    },
+    "Run again": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spustit znovu"
+          }
+        }
+      }
+    },
+    "Run self-test": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spustit autotest"
+          }
+        }
+      }
+    },
+    "Running checks…": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probíhají kontroly…"
+          }
+        }
+      }
+    },
+    "Self-test": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autotest"
+          }
+        }
+      }
+    },
+    "Sessions": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relace"
+          }
+        }
+      }
+    },
+    "Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nastavení"
+          }
+        }
+      }
+    },
+    "Settings…": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nastavení…"
+          }
+        }
+      }
+    },
+    "Setup": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zprovoznění"
+          }
+        }
+      }
+    },
+    "Simulate a session": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simulovat relaci"
+          }
+        }
+      }
+    },
+    "Sleep now": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uspat hned"
+          }
+        }
+      }
+    },
+    "Sleep permission": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oprávnění ke spánku"
+          }
+        }
+      }
+    },
+    "Sleep permission installed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oprávnění ke spánku nainstalováno"
+          }
+        }
+      }
+    },
+    "Sleep permission removed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oprávnění ke spánku odebráno"
+          }
+        }
+      }
+    },
+    "Sleeping in %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uspání za %@"
+          }
+        }
+      }
+    },
+    "Start Vigil automatically when you log in.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spustí Vigil automaticky po přihlášení."
+          }
+        }
+      }
+    },
+    "Start sleep countdown": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spustit odpočet spánku"
+          }
+        }
+      }
+    },
+    "Starts as soon as Claude Code begins working.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spustí se, jakmile Claude Code začne pracovat."
+          }
+        }
+      }
+    },
+    "The fake hook event did not arrive": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testovací událost nedorazila"
+          }
+        }
+      }
+    },
+    "The socket is listening": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Socket naslouchá"
+          }
+        }
+      }
+    },
+    "Timed out": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vypršel čas"
+          }
+        }
+      }
+    },
+    "Turn off": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vypnout"
+          }
+        }
+      }
+    },
+    "Turn on": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapnout"
+          }
+        }
+      }
+    },
+    "Vigil is off": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigil je vypnutý"
+          }
+        }
+      }
+    },
+    "Vigil needs to allow two power commands (pmset disablesleep) without a password.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigil potřebuje povolit dva příkazy pro správu napájení (pmset disablesleep) bez hesla."
+          }
+        }
+      }
+    },
+    "Vigil restored normal sleep and is putting your Mac to sleep.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigil obnovil běžný spánek a uspává váš Mac."
+          }
+        }
+      }
+    },
+    "Vigil will remove its sudoers rule.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigil odebere své pravidlo v sudoers."
+          }
+        }
+      }
+    },
+    "Wait this long after Claude finishes before sleeping.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tak dlouho počkat po dokončení práce Claude, než se Mac uspí."
+          }
+        }
+      }
+    },
+    "Waiting for you": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Čeká na vás"
+          }
+        }
+      }
+    },
+    "Warns you before the Mac sleeps, with Cancel and Keep awake buttons.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upozorní vás před uspáním, s tlačítky Zrušit a Nechat vzhůru."
+          }
+        }
+      }
+    },
+    "Watch Claude Code": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sledovat Claude Code"
+          }
+        }
+      }
+    },
+    "When Claude is waiting for me": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Když na mě Claude čeká"
+          }
+        }
+      }
+    },
+    "With the lid open, Vigil restores normal sleep but does not force it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Při otevřeném víku Vigil obnoví běžný spánek, ale uspání nevynutí."
+          }
+        }
+      }
+    },
+    "Working": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pracuje"
+          }
+        }
+      }
+    },
+    "Your Mac goes to sleep in %d seconds.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Váš Mac se uspí za %d s."
+          }
+        }
+      }
+    },
+    "Your Mac is running hot": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Váš Mac se přehřívá"
+          }
+        }
+      }
+    },
+    "Your Mac sleeps normally.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Váš Mac spí normálně."
+          }
+        }
+      }
+    },
+    "hook.sh is not installed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hook.sh není nainstalovaný"
+          }
+        }
+      }
+    },
+    "hook.sh misbehaved (exit %d, output not empty)": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hook.sh se chová špatně (kód %d, neprázdný výstup)"
+          }
+        }
+      }
+    },
+    "sudo -n pmset -a disablesleep 0 works without a password": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "sudo -n pmset -a disablesleep 0 funguje bez hesla"
+          }
+        }
+      }
+    },
+    "sudo would ask for a password. Install the sleep permission.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "sudo by chtělo heslo. Nainstalujte oprávnění ke spánku."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

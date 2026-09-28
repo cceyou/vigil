@@ -1,0 +1,61 @@
+# XcodeGen spec: `brew install xcodegen && xcodegen generate && open Vigil.xcodeproj`
+# NOTE: written for use with full Xcode. Vigil was developed with SwiftPM + build.sh on a
+# Command-Line-Tools-only machine, so this file has NOT been run through xcodebuild yet.
+name: Vigil
+options:
+  bundleIdPrefix: cz.krystof
+  deploymentTarget:
+    macOS: "14.0"
+packages:
+  VigilPackage:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+targets:
+  Vigil:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/Vigil
+      - path: Sources/VigilCore
+      - path: Resources/Localizable.xcstrings
+      - path: Resources/Assets.xcassets
+    info:
+      path: Resources/Info.plist
+    entitlements:
+      path: Resources/Vigil.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cz.krystof.vigil
+        PRODUCT_NAME: Vigil
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/Vigil.entitlements
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+  VigilTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/VigilTests
+    dependencies:
+      - target: Vigil
+    settings:
+      base:
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Vigil.app/Contents/MacOS/Vigil"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  Vigil:
+    build:
+      targets:
+        Vigil: all
+    test:
+      targets:
+        - VigilTests
