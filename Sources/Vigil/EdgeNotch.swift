@@ -3,8 +3,14 @@ import Carbon.HIToolbox
 import SwiftUI
 import VigilCore
 
-/// Borderless panel that never becomes key or main, so hovering or clicking it never steals focus.
-final class NonKeyPanel: NSPanel {
+/// Borderless non-activating panel. It never becomes main, and never key unless `becomesKeyOnClick` is set
+/// (only the usage card, and only after the user clicks into it), so hovering never steals focus.
+final class EdgePanel: NSPanel {
+    /// The usage card sets this: a click into it may make it key (so it can see Esc). Hover never does.
+    var becomesKeyOnClick = false
+    /// Esc while this panel is key. Vigil never claims Esc system-wide.
+    var onEscape: (() -> Void)?
+
     init(contentRect: NSRect) {
         super.init(contentRect: contentRect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isFloatingPanel = true
@@ -20,8 +26,16 @@ final class NonKeyPanel: NSPanel {
         becomesKeyOnlyIfNeeded = true
     }
 
-    override var canBecomeKey: Bool { false }
+    override var canBecomeKey: Bool { becomesKeyOnClick }
     override var canBecomeMain: Bool { false }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, event.keyCode == UInt16(kVK_Escape), let onEscape {
+            onEscape()
+            return
+        }
+        super.sendEvent(event)
+    }
 }
 
 /// Hosting view that reports hover through its own NSTrackingArea (no global event monitors).
@@ -29,7 +43,11 @@ final class HoverHostingView<Content: View>: NSHostingView<Content> {
     var onEnter: () -> Void = {}
     var onExit: () -> Void = {}
     var onClick: (() -> Void)?
+    /// With `becomesKeyOnlyIfNeeded`, a panel becomes key on a click only if the clicked view asks for it.
+    var needsKeyOnClick = false
     private var area: NSTrackingArea?
+
+    override var needsPanelToBecomeKey: Bool { needsKeyOnClick }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -87,13 +105,15 @@ private struct PillGlass: ViewModifier {
 /// One notch per display (or only the main one), plus the usage card that slides out of the edge.
 ///
 /// Hover: pointer on the notch for `hoverDelay` (and no mouse button held, so dragging a window to the edge
-/// never opens it) shows the card; leaving both notch and card hides it after 400 ms. A click on the card pins it;
-/// Esc (a Carbon hotkey registered only while pinned) or a click on the notch closes it.
+/// never opens it) shows the card; leaving both notch and card hides it after 400 ms. A click on the card pins it.
+/// A pinned card closes on a click on the notch, the shortcut, its × button, or a click anywhere outside it
+/// (a left-mouse-down monitor that runs only while pinned: mouse only, never keys, so no Accessibility permission).
+/// Esc closes it only once the user has clicked into the card and it is the key window. See `PinnedCard`.
 @MainActor
 final class EdgeNotchController {
     private struct Notch {
         let screenID: CGDirectDisplayID
-        let panel: NonKeyPanel
+        let panel: EdgePanel
         let state: NotchPillState
     }
 
@@ -105,7 +125,7 @@ final class EdgeNotchController {
     private let model: AppModel
     private var notches: [Notch] = []
     private let cardState = UsageCardState()
-    private var cardPanel: NonKeyPanel?
+    private var cardPanel: EdgePanel?
     private var cardHost: HoverHostingView<AnyView>?
     /// Screen whose notch the card is attached to.
     private var cardScreenID: CGDirectDisplayID?
@@ -114,7 +134,8 @@ final class EdgeNotchController {
     private var hideTimer: Timer?
     private var orderOutWork: DispatchWorkItem?
     private var shortcutToken: UInt32?
-    private var escToken: UInt32?
+    /// Outside-click monitors (global + local), installed only while the card is pinned.
+    private var outsideClickMonitors: [Any] = []
     private var observers: [NSObjectProtocol] = []
 
     init(model: AppModel) {
@@ -164,7 +185,7 @@ final class EdgeNotchController {
         notches = targetScreens().compactMap { screen in
             guard let id = screen.displayID else { return nil }
             let state = NotchPillState()
-            let panel = NonKeyPanel(contentRect: notchFrame(on: screen))
+            let panel = EdgePanel(contentRect: notchFrame(on: screen))
             let host = HoverHostingView(rootView: NotchPill(state: state))
             host.onEnter = { [weak self] in self?.notchEntered(screenID: id) }
             host.onExit = { [weak self] in self?.notchExited(screenID: id) }
@@ -236,7 +257,7 @@ final class EdgeNotchController {
         showTimer = Timer.scheduledTimer(withTimeInterval: ui.hoverDelay, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.notch(screenID)?.state.hovering == true, NSEvent.pressedMouseButtons == 0 else { return }
-                self.showCard(on: screenID)
+                self.handle(.hover, screenID: screenID)
             }
         }
     }
@@ -249,12 +270,20 @@ final class EdgeNotchController {
 
     private func notchClicked(screenID: CGDirectDisplayID) {
         showTimer?.invalidate()
-        if cardState.shown {
-            hideCard()
-        } else {
-            showCard(on: screenID)
+        handle(.notchClick, screenID: screenID)
+    }
+
+    /// Single entry point for everything that shows, pins or closes the card.
+    private func handle(_ trigger: PinnedCard.Trigger, screenID: CGDirectDisplayID? = nil) {
+        switch PinnedCard.reaction(to: trigger, shown: cardState.shown, pinned: cardState.pinned) {
+        case .none: break
+        case .show: showCard(on: screenID)
+        case .pin:
+            if !cardState.shown { showCard(on: screenID) }
             pin()
+        case .close: hideCard()
         }
+        if PinnedCard.becomesKey(on: trigger), cardState.shown { cardPanel?.makeKey() }
     }
 
     private func scheduleHide() {
@@ -271,11 +300,16 @@ final class EdgeNotchController {
 
     // MARK: card
 
-    private func ensureCard() -> (NonKeyPanel, HoverHostingView<AnyView>) {
+    private func ensureCard() -> (EdgePanel, HoverHostingView<AnyView>) {
         if let cardPanel, let cardHost { return (cardPanel, cardHost) }
-        let panel = NonKeyPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 400))
-        let root = AnyView(UsageCardContainer(model: model, state: cardState) { [weak self] in self?.pin() })
+        let panel = EdgePanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 400))
+        panel.becomesKeyOnClick = true
+        panel.onEscape = { [weak self, weak panel] in self?.handle(.escape(cardIsKey: panel?.isKeyWindow ?? false)) }
+        let root = AnyView(UsageCardContainer(model: model, state: cardState,
+                                              onClick: { [weak self] in self?.handle(.clickInCard) },
+                                              onClose: { [weak self] in self?.handle(.closeButton) }))
         let host = HoverHostingView(rootView: root)
+        host.needsKeyOnClick = true
         host.onEnter = { [weak self] in
             self?.pointerInCard = true
             self?.hideTimer?.invalidate()
@@ -337,24 +371,46 @@ final class EdgeNotchController {
         guard !cardState.pinned else { return }
         cardState.pinned = true
         hideTimer?.invalidate()
-        // Esc is only claimed while the card is pinned, and released as soon as it closes.
-        escToken = HotKeyCenter.shared.register(keyCode: UInt32(kVK_Escape), modifiers: 0) { [weak self] in self?.hideCard() }
+        updateOutsideClickMonitor()
     }
 
     private func unpin() {
         cardState.pinned = false
-        HotKeyCenter.shared.unregister(escToken)
-        escToken = nil
+        updateOutsideClickMonitor()
+    }
+
+    /// Left mouse-downs only. The global monitor sees clicks in other apps; the local one sees clicks in Vigil's
+    /// own windows (menu bar icon, popover) except the card and the notches, which handle their own clicks.
+    private func updateOutsideClickMonitor() {
+        let wanted = PinnedCard.watchesOutsideClicks(shown: cardState.shown, pinned: cardState.pinned)
+        if wanted, outsideClickMonitors.isEmpty {
+            if let global = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown, handler: { [weak self] _ in
+                MainActor.assumeIsolated { self?.handle(.mouseDownOutside) }
+            }) {
+                outsideClickMonitors.append(global)
+            }
+            if let local = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown, handler: { [weak self] event in
+                MainActor.assumeIsolated {
+                    if let self, !self.isEdgeWindow(event.window) { self.handle(.mouseDownOutside) }
+                }
+                return event
+            }) {
+                outsideClickMonitors.append(local)
+            }
+        } else if !wanted, !outsideClickMonitors.isEmpty {
+            outsideClickMonitors.forEach(NSEvent.removeMonitor)
+            outsideClickMonitors = []
+        }
+    }
+
+    private func isEdgeWindow(_ window: NSWindow?) -> Bool {
+        guard let window else { return false }
+        return window === cardPanel || notches.contains { $0.panel === window }
     }
 
     private func toggleFromShortcut() {
-        if cardState.shown {
-            hideCard()
-        } else {
-            let main = NSScreen.screens.first?.displayID
-            showCard(on: notch(main ?? 0) != nil ? main : notches.first?.screenID ?? main)
-            pin()
-        }
+        let main = NSScreen.screens.first?.displayID
+        handle(.shortcut, screenID: notch(main ?? 0) != nil ? main : notches.first?.screenID ?? main)
     }
 }
 
@@ -362,10 +418,11 @@ final class EdgeNotchController {
 private struct UsageCardContainer: View {
     let model: AppModel
     let state: UsageCardState
-    let onPin: () -> Void
+    let onClick: () -> Void
+    let onClose: () -> Void
 
     var body: some View {
-        UsageCardView(model: model, state: state, onPin: onPin)
+        UsageCardView(model: model, state: state, onClick: onClick, onClose: onClose)
             .padding(.vertical, 24).padding(.leading, 24).padding(.trailing, 10) // room for the glass shadow
             .offset(x: state.shown ? 0 : UsageCardView.width + 40)
             .opacity(state.shown ? 1 : 0)

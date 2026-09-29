@@ -16,7 +16,8 @@ struct UsageCardSession: Identifiable, Equatable {
 final class UsageCardState {
     /// Drives the slide in/out.
     var shown = false
-    /// Clicked: stays open until Esc, a click on the notch, or the shortcut.
+    /// Clicked: stays open until the notch, the shortcut, the × button or a click outside closes it
+    /// (or Esc, once the user has clicked into the card).
     var pinned = false
 }
 
@@ -25,7 +26,8 @@ final class UsageCardState {
 struct UsageCardView: View {
     let model: AppModel
     let state: UsageCardState
-    var onPin: () -> Void = {}
+    var onClick: () -> Void = {}
+    var onClose: () -> Void = {}
 
     static let width: CGFloat = 300
     static let warning = Color(hex: 0xFF9F0A)
@@ -59,7 +61,7 @@ struct UsageCardView: View {
         .frame(width: Self.width, alignment: .leading)
         .modifier(GlassCard(radius: 26))
         .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .onTapGesture { onPin() }
+        .onTapGesture { onClick() }
         .animation(.smooth, value: model.usageSessions)
         .animation(.smooth, value: state.pinned)
     }
@@ -76,9 +78,16 @@ struct UsageCardView: View {
             }
             Spacer(minLength: 6)
             if state.pinned {
-                Image(systemName: "pin.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                    .transition(.scale.combined(with: .opacity))
-                    .help(L("Pinned. Press Esc or click the notch to close."))
+                Button(action: onClose) {
+                    Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(.primary.opacity(0.08), in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .transition(.scale.combined(with: .opacity))
+                .help(L("Close"))
+                .accessibilityLabel(L("Close"))
             }
         }
     }

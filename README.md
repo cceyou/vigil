@@ -50,12 +50,13 @@ The setup checklist, power errors and guard notices (low battery, heat, time lim
 
 ## Edge notch and Claude usage
 
-A 5×56 pt glass pill sits on the right edge of the screen (vertically centred by default; position 20–80 % in Settings). It grows to 9×72 pt when the pointer comes within about 12 pt. Rest on it for 180 ms (configurable) and a card slides out; move away from both and it hides after 400 ms. Click the card to **pin** it; **Esc** or a click on the notch closes it. **⌥⌘U** (configurable, can be turned off) toggles the card from anywhere.
+A 5×56 pt glass pill sits on the right edge of the screen (vertically centred by default; position 20–80 % in Settings). It grows to 9×72 pt when the pointer comes within about 12 pt. Rest on it for 180 ms (configurable) and a card slides out; move away from both and it hides after 400 ms. Click the card to **pin** it. **⌥⌘U** (configurable, can be turned off) toggles the card from anywhere.
 
-- The notch and card are borderless `NSPanel`s with `.nonactivatingPanel`: they never become key and never take focus from the app you are in. Hover comes from an `NSTrackingArea` on the panel: no global event monitor, no Accessibility permission. The shortcut is a Carbon `RegisterEventHotKey`.
+- The notch and card are borderless `NSPanel`s with `.nonactivatingPanel`: they never activate Vigil. The notch never becomes key; the card becomes key only when you click into it (`becomesKeyOnlyIfNeeded`), never on hover, so it never takes focus from the app you are typing in. Hover comes from an `NSTrackingArea` on the panel: no Accessibility permission. The shortcut is a Carbon `RegisterEventHotKey`.
 - It never opens while a mouse button is held (dragging a window to the edge), stays 80 pt away from the corners (Hot Corners), and sits inside `visibleFrame`, so a Dock on the right keeps it just inside the Dock.
 - One notch per display, or only the main display. Hidden while an app is full screen on that display (default on; detected from window bounds, which need no Screen Recording permission).
-- **Esc trade-off**: the card can never become key, so Vigil cannot see key presses the normal way. While (and only while) the card is pinned, Vigil registers Esc as a Carbon hotkey. That Esc does not reach the frontmost app (Claude Code uses Esc to interrupt), so press it again after the card has closed.
+- **Closing a pinned card**: click the notch, press **⌥⌘U**, click the **×** in the card header, or click anywhere outside the card. The outside click is seen by a `leftMouseDown` monitor that runs only while the card is pinned; it watches the mouse only, never keys, so it needs no Accessibility permission.
+- **Esc** closes the card only after you have clicked into it (the card is then the key window). Vigil never registers Esc system-wide, so Esc always reaches Claude Code, where it interrupts.
 
 **The card** (Liquid Glass via `.glassEffect()` on macOS 26, `.ultraThinMaterial` with a hairline and a soft shadow before that) is monochrome. Its only colours are warnings: a bar turns orange at 80 % and red at 95 %, a context ring turns orange at 80 % (*brzy auto-compact*). It shows:
 
@@ -167,7 +168,6 @@ Data lives in `~/Library/Application Support/Vigil/`: `hook.sh`, `statusline.sh`
 | Hook commands fail in Claude Code | `hook.sh` missing? Vigil restores it at launch and every 10 s while running. Or click *Install hooks* again. |
 | Usage card says "No limits yet" | Limits arrive only with a Claude.ai Pro/Max login, Claude Code 2.1.80+, and after the first response of a session. `grep usage ~/Library/Application\ Support/Vigil/logs/vigil.log`. Self-test ▸ *Status line* must be green. |
 | My old status line disappeared | Settings ▸ *Status line* ▸ *Remove* restores it exactly (it is in `statusline.original.json`). While installed it is still run through `statusline.chain`. |
-| Esc does nothing in the terminal | The usage card is pinned; the first Esc closes it. |
 | No notification buttons | System Settings ▸ Notifications ▸ Vigil ▸ set the style to *Alerts* to keep the buttons on screen. |
 | Icon hidden on a notched MacBook | Too many menu bar icons: hold ⌘ and drag some away. |
 | `codesign` fails with "detritus not allowed" | The project is in an iCloud-synced folder (Desktop/Documents). `build.sh` builds and signs under `~/Library/Caches/Vigil` (valid), but iCloud re-stamps the copy in `./build` seconds later, so `codesign --verify` on *that* copy fails even though the app launches. Use `./build.sh --install` (a copy in `/Applications` always verifies), or keep the project outside iCloud. |
@@ -200,7 +200,7 @@ It quits Vigil (which restores sleep), removes only Vigil's entries from `~/.cla
 8. Press Ctrl+C in a session mid-task: within about 10 s the session disappears and the countdown starts.
 9. Start a task, then `kill -9 $(pgrep -x Vigil)`: `pmset -g | grep SleepDisabled` is back to `0` within a few seconds.
 10. Start a task, then Quit Vigil from the menu, and again with `kill $(pgrep -x Vigil)`: `SleepDisabled` returns to `0` immediately.
-11. Usage: after a response in Claude Code (Pro/Max login), hover the right screen edge: the card shows both windows and the session. Drag a window to the right edge with the mouse held: the card must not open. Click the card (pin icon), press Esc: it closes. ⌥⌘U toggles it.
+11. Usage: after a response in Claude Code (Pro/Max login), hover the right screen edge: the card shows both windows and the session. Drag a window to the right edge with the mouse held: the card must not open. Click the card: it pins (× appears). Press Esc in a terminal: the terminal gets it and the card stays. Click into the card, press Esc: it closes. Pin again, click the desktop: it closes. ⌥⌘U toggles it.
 12. Battery/thermal guards: unplug and set the threshold above the current level (Settings ▸ Low battery threshold): Vigil restores and sleeps at once.
 
 ## Development
@@ -226,6 +226,5 @@ The Command Line Tools ship without SwiftUI's macro plugin, so views cannot use 
 - The countdown notification cannot tick live (macOS does not update delivered notifications); the popover and the menu bar title show the real countdown.
 - Closing the lid needs `disablesleep`, which requires the sudoers rule; without it Vigil still holds idle-sleep assertions (lid-open case) and says so in the UI.
 - The usage numbers are only as fresh as the last status line update from a running Claude Code session; the card says how old they are.
-- While the usage card is pinned, Esc is claimed globally (see the Esc trade-off above).
 - `--snapshot` renders offscreen, where Liquid Glass and materials draw flat; the live card is translucent.
 - The lid-closed / real-sleep behavior (checklist steps 4-5) has to be verified by hand on your machine.

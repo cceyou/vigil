@@ -491,6 +491,17 @@
         }
       }
     },
+    "Close": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zavřít"
+          }
+        }
+      }
+    },
     "Closed (lid)": {
       "extractionState": "manual",
       "localizations": {
@@ -1533,17 +1544,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Oprávnění a hooky"
-          }
-        }
-      }
-    },
-    "Pinned. Press Esc or click the notch to close.": {
-      "extractionState": "manual",
-      "localizations": {
-        "cs": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Připnuto. Zavřete klávesou Esc nebo kliknutím na notch."
           }
         }
       }
