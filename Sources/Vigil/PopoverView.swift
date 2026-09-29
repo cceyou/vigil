@@ -526,7 +526,7 @@ struct SetupChecklist: View {
                      done: s.sudoers, action: L("Allow"), busy: model.busy.contains("sudoers")) { model.installSudoers() }
                 if s.hooksOutdated {
                     step(title: L("Claude Code hooks are out of date"),
-                         detail: L("Adds the subagent hooks, so the Mac stays awake while subagents work. Other hooks are left alone."),
+                         detail: L("Adds the newer hooks (subagents, waiting for your answer). Other hooks are left alone."),
                          done: s.hooks, action: L("Update hooks"), busy: model.busy.contains("hooks")) { model.updateHooks() }
                 } else {
                     step(title: L("Claude Code hooks"),

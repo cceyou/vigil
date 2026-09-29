@@ -161,13 +161,13 @@
         }
       }
     },
-    "Adds the subagent hooks, so the Mac stays awake while subagents work. Other hooks are left alone.": {
+    "Adds the newer hooks (subagents, waiting for your answer). Other hooks are left alone.": {
       "extractionState": "manual",
       "localizations": {
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Přidá hooky pro subagenty, aby Mac zůstal vzhůru, dokud pracují. Ostatní hooky zůstanou beze změny."
+            "value": "Přidá novější hooky (subagenti, čekání na vaši odpověď). Ostatní hooky zůstanou beze změny."
           }
         }
       }
@@ -1493,13 +1493,13 @@
         }
       }
     },
-    "Out of date: the subagent hooks are missing": {
+    "Out of date: newer hooks are available": {
       "extractionState": "manual",
       "localizations": {
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zastaralé: chybí hooky pro subagenty"
+            "value": "Zastaralé: jsou k dispozici novější hooky"
           }
         }
       }

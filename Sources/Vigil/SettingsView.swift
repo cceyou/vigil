@@ -173,7 +173,7 @@ struct SettingsView: View {
             RowDivider()
             SettingRow(title: L("Claude Code hooks"),
                        subtitle: model.setup.hooks ? L("Present in ~/.claude/settings.json")
-                           : model.setup.hooksOutdated ? L("Out of date: the subagent hooks are missing") : L("Not installed")) {
+                           : model.setup.hooksOutdated ? L("Out of date: newer hooks are available") : L("Not installed")) {
                 if model.setup.hooks {
                     ActionButton(title: L("Remove hooks"), busy: model.busy.contains("hooks")) { model.removeHooks() }
                 } else if model.setup.hooksOutdated {

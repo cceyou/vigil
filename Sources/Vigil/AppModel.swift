@@ -34,7 +34,7 @@ enum IslandState: Equatable {
 struct SetupStatus: Equatable {
     var sudoers = false
     var hooks = false
-    /// Our hooks are in settings.json but from an older hook set (e.g. without the subagent hooks).
+    /// Our hooks are in settings.json but from an older hook set (e.g. without the subagent or PermissionRequest hooks).
     var hooksOutdated = false
     var notifications = false
     var loginItem = false
