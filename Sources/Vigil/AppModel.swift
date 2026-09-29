@@ -369,12 +369,16 @@ final class AppModel {
         workingByActivity.first ?? machine.sessions.max { $0.lastEventAt < $1.lastEventAt }
     }
 
+    /// Waiting for an answer outranks "working": the Mac stays awake for it (default policy), but the user
+    /// has to act. Only an imminent sleep (countdown), a guard or "off" rank higher.
     var island: IslandState {
         if let reason = pausedReason { return .paused(reason) }
         switch phase {
         case .off: return .off
         case .countdown: return .countdown(countdownRemaining ?? 0)
-        case .working: return .working(workingSessions.isEmpty ? awakeElapsed : workingElapsed)
+        case .working:
+            if !waitingSessions.isEmpty { return .waiting }
+            return .working(workingSessions.isEmpty ? awakeElapsed : workingElapsed)
         case .armed: return waitingSessions.isEmpty ? .idle : .waiting
         }
     }
@@ -688,7 +692,7 @@ final class AppModel {
             _ = m.handle(hook(.subagentStart, "a", "/Users/me/Projects/alwayson", agent: "x1", type: "Explore"), at: t.addingTimeInterval(60))
             _ = m.handle(hook(.subagentStart, "a", "/Users/me/Projects/alwayson", agent: "x2", type: "code-reviewer"), at: t.addingTimeInterval(90))
             _ = m.handle(hook(.userPromptSubmit, "b", "/Users/me/Projects/website"), at: t.addingTimeInterval(300))
-            _ = m.handle(hook(.notification, "b", "/Users/me/Projects/website"), at: t.addingTimeInterval(500))
+            _ = m.handle(hook(.permissionRequest, "b", "/Users/me/Projects/website"), at: t.addingTimeInterval(500))
             _ = m.handle(hook(.userPromptSubmit, "c", "/Users/me/Projects/dotfiles"), at: t.addingTimeInterval(20))
             _ = m.handle(hook(.stop, "c", "/Users/me/Projects/dotfiles"), at: t.addingTimeInterval(400))
         case .countdown:

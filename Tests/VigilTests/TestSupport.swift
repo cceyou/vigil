@@ -5,9 +5,13 @@ let t0 = Date(timeIntervalSince1970: 1_000_000)
 
 func at(_ seconds: TimeInterval) -> Date { t0.addingTimeInterval(seconds) }
 
-func hook(_ kind: HookKind, _ id: String = "a", cwd: String? = "/Users/me/proj", pid: Int32? = nil) -> Event {
-    .hook(HookEvent(kind: kind, sessionID: id, cwd: cwd, pid: pid))
+func hook(_ kind: HookKind, _ id: String = "a", cwd: String? = "/Users/me/proj", pid: Int32? = nil,
+          type notificationType: String? = nil) -> Event {
+    .hook(HookEvent(kind: kind, sessionID: id, cwd: cwd, pid: pid, notificationType: notificationType))
 }
+
+/// Claude Code's Notification hook for a permission prompt.
+func permissionPrompt(_ id: String = "a") -> Event { hook(.notification, id, type: "permission_prompt") }
 
 func machine(enabled: Bool = true, _ configure: (inout Config) -> Void = { _ in }) -> StateMachine {
     var config = Config()

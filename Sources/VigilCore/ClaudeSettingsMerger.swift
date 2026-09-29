@@ -5,15 +5,22 @@ public enum ClaudeSettingsMerger {
     /// Every hook command we install contains this; it is how we recognise (and remove) our own entries.
     public static let marker = "Vigil/hook.sh"
 
-    /// Events we register. PostToolUse is a heartbeat that lets a session resume "working" after a
-    /// permission prompt was approved (Claude Code fires no UserPromptSubmit in that case).
+    /// Events we register. PostToolUse (matcher "*") is a heartbeat that moves a waiting session back to
+    /// "working" once the user has answered (Claude Code fires no UserPromptSubmit in that case).
+    /// Notification (by its notification_type) and PermissionRequest mark a session as waiting for the user.
     /// SubagentStart/SubagentStop keep a session busy while subagents run after the main agent's Stop.
     public static let events: [HookKind] = [.sessionStart, .userPromptSubmit, .stop, .notification, .sessionEnd, .postToolUse,
-                                            .subagentStart, .subagentStop]
+                                            .permissionRequest, .subagentStart, .subagentStop]
 
-    /// Version of the hook set. Bump it whenever `events` or the command line changes, so an existing
-    /// install shows up as outdated. Entries without a stamp are version 1.
-    public static let version = 2
+    /// Tool events take a matcher; "*" means every tool.
+    static func matcher(for kind: HookKind) -> String? {
+        kind == .postToolUse || kind == .permissionRequest ? "*" : nil
+    }
+
+    /// Version of the hook set. Bump it whenever `events`, a matcher or the command line changes, so an
+    /// existing install shows up as outdated. Entries without a stamp are version 1.
+    /// 3: PermissionRequest, PostToolUse matcher "*".
+    public static let version = 3
     private static let versionFlag = "--vigil-hooks="
 
     public enum Status: Equatable, Sendable {
@@ -113,7 +120,9 @@ public enum ClaudeSettingsMerger {
             } else {
                 groups = []
             }
-            groups.append(["hooks": [["type": "command", "command": command(for: kind), "timeout": 5] as [String: Any]]])
+            var group: [String: Any] = ["hooks": [["type": "command", "command": command(for: kind), "timeout": 5] as [String: Any]]]
+            if let matcher = matcher(for: kind) { group["matcher"] = matcher }
+            groups.append(group)
             hooks[kind.rawValue] = groups
         }
         root["hooks"] = hooks

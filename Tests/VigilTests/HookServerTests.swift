@@ -84,6 +84,26 @@ import Testing
         #expect(events.first?.agentType == "code-reviewer")
     }
 
+    @Test func permissionRequestHookNeverOutputsADecision() throws {
+        // A PermissionRequest hook that printed JSON could allow or deny the tool. Ours must stay silent
+        // and exit 0, so Claude Code always shows its normal prompt.
+        let home = makeTempDir("vigil-home"); defer { try? FileManager.default.removeItem(at: home) }
+        try HookInstaller(paths: VigilPaths(home: home)).installScript()
+        let sock = socketPath()
+        let box = EventBox()
+        let server = HookServer(socketPath: sock) { box.add($0) }
+        try server.start(); defer { server.stop() }
+        let payload = #"{"session_id":"s-perm","cwd":"/tmp","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"rm -rf build"}}"#
+        for socket in [sock, "/tmp/vgl-nonexistent.sock"] { // Vigil running, and not running
+            let r = Shell.run("/bin/sh", ["-c", ClaudeSettingsMerger.command(for: .permissionRequest)], stdin: payload,
+                              environment: ["HOME": home.path, "PATH": "/usr/bin:/bin", "VIGIL_SOCKET": socket], timeout: 5)
+            #expect(r.status == 0 && r.stdout.isEmpty && r.stderr.isEmpty)
+        }
+        #expect(box.waitForCount(1))
+        #expect(box.all.first?.kind == .permissionRequest)
+        #expect(box.all.first?.sessionID == "s-perm")
+    }
+
     @Test func multilinePayloadStillArrivesAsOneEvent() throws {
         let dir = makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
         let sock = socketPath()

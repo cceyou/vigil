@@ -147,12 +147,30 @@ import Testing
         #expect(ClaudeSettingsMerger.events.contains(.subagentStop))
     }
 
+    @Test func toolHooksMatchEveryToolAndVersionIsBumped() throws {
+        #expect(ClaudeSettingsMerger.version >= 3)
+        #expect(ClaudeSettingsMerger.events.contains(.permissionRequest))
+        #expect(ClaudeSettingsMerger.events.contains(.postToolUse))
+        let out = try ClaudeSettingsMerger.install(into: nil)
+        for event in ["PostToolUse", "PermissionRequest"] {
+            let groups = hooks(out)[event] as! [[String: Any]]
+            #expect(groups.count == 1)
+            #expect(groups[0]["matcher"] as? String == "*", "\(event)")
+        }
+        // Non-tool events carry no matcher.
+        #expect((hooks(out)["Notification"] as! [[String: Any]])[0]["matcher"] == nil)
+        // A v2 install (no PermissionRequest) shows up as outdated, so "Update hooks" appears.
+        let v2 = String(decoding: out, as: UTF8.self)
+            .replacingOccurrences(of: "--vigil-hooks=\(ClaudeSettingsMerger.version)", with: "--vigil-hooks=2")
+        #expect(ClaudeSettingsMerger.status(in: Data(v2.utf8)) == .outdated)
+    }
+
     @Test func statusDetectsMissingOutdatedAndCurrent() throws {
         #expect(ClaudeSettingsMerger.status(in: nil) == .missing)
         #expect(ClaudeSettingsMerger.status(in: Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"x"}]}]}}"#.utf8)) == .missing)
         let old = Data(Self.v1Settings.utf8)
         #expect(ClaudeSettingsMerger.status(in: old) == .outdated)
-        #expect(ClaudeSettingsMerger.missingEvents(in: old) == [.subagentStart, .subagentStop])
+        #expect(ClaudeSettingsMerger.missingEvents(in: old) == [.permissionRequest, .subagentStart, .subagentStop])
         #expect(ClaudeSettingsMerger.status(in: try ClaudeSettingsMerger.install(into: old)) == .current)
         // All events present but one still unstamped: outdated too.
         var partial = try ClaudeSettingsMerger.install(into: nil)

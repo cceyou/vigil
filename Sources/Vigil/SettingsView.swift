@@ -58,15 +58,23 @@ struct SettingsView: View {
             RowDivider()
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L("When Claude is waiting for me")).font(.system(size: 13, weight: .medium))
-                    Text(L("A permission prompt or question from Claude Code.")).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(L("When Claude is waiting for an answer")).font(.system(size: 13, weight: .medium))
+                    Text(L("A permission prompt or a question from Claude Code. Keep the Mac awake to answer from your phone with Remote Control."))
+                        .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Picker("", selection: config(\.notificationPolicy)) {
-                    Text(L("Start sleep countdown")).tag(NotificationPolicy.treatAsIdle)
                     Text(L("Keep awake")).tag(NotificationPolicy.keepAwake)
+                    Text(L("Sleep after a delay")).tag(NotificationPolicy.treatAsIdle)
                 }
                 .labelsHidden().pickerStyle(.segmented)
             }
+            RowDivider()
+            SettingRow(title: L("Maximum wait for an answer"), subtitle: L("Then Vigil notifies you and starts the sleep countdown.")) {
+                Picker("", selection: config(\.maxWaiting)) {
+                    ForEach([0.5, 1, 2, 4, 8].map { $0 * 3600 }, id: \.self) { Text(Durations.short($0)).tag($0) }
+                }.labelsHidden().frame(width: 84)
+            }
+            .disabled(model.settings.config.notificationPolicy != .keepAwake)
         }
 
         group(L("Look")) {

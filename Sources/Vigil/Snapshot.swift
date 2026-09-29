@@ -115,7 +115,8 @@ extension AppModel {
                 _ = m.handle(hook(.userPromptSubmit, "c", "rasinova-residence"), at: now.addingTimeInterval(-120))
             case .waiting:
                 _ = m.handle(hook(.userPromptSubmit, "a", "alwayson"), at: now.addingTimeInterval(-1500))
-                _ = m.handle(hook(.notification, "a", "alwayson"), at: now.addingTimeInterval(-40))
+                _ = m.handle(.hook(HookEvent(kind: .notification, sessionID: "a", cwd: "/Users/me/Projects/alwayson", pid: 1,
+                                             notificationType: "permission_prompt")), at: now.addingTimeInterval(-40))
             case .countdown:
                 _ = m.handle(hook(.userPromptSubmit, "a", "alwayson"), at: now.addingTimeInterval(-900))
                 _ = m.handle(hook(.stop, "a", "alwayson"), at: now.addingTimeInterval(-6))

@@ -61,7 +61,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var ui = UISettings()
     /// Settings migrations applied so far (nil = saved before migrations existed).
     public var revision: Int?
-    public static let currentRevision = 2
+    public static let currentRevision = 3
     public init() { revision = Self.currentRevision }
 
     // Every key is optional: settings saved by an older build (without `ui`, say) must load, not reset to defaults.
@@ -78,8 +78,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     /// Revision 2: the low-battery default dropped from 15 % to 5 %. At 15 % the guard kept tripping in normal
     /// use and the Mac slept as soon as the lid closed; a value still at the old default moves to the new one.
+    /// Revision 3: "when Claude is waiting for an answer" now defaults to keep awake (answering from the phone
+    /// through Remote Control needs the Mac awake). A policy still at the old default (treat as idle) moves to
+    /// the new default once; a policy the user changed away from the old default is kept. Each step runs once,
+    /// so choosing the old value again later sticks.
     public mutating func migrate() {
-        if (revision ?? 1) < 2, config.lowBatteryThreshold == 15 { config.lowBatteryThreshold = 5 }
+        let from = revision ?? 1
+        if from < 2, config.lowBatteryThreshold == 15 { config.lowBatteryThreshold = 5 }
+        if from < 3, config.notificationPolicy == .treatAsIdle { config.notificationPolicy = .keepAwake }
         revision = Self.currentRevision
     }
 }

@@ -1,6 +1,17 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ has waited %@. Your Mac will go to sleep after the grace period.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ čeká už %@. Po odkladu před spánkem se Mac uspí."
+          }
+        }
+      }
+    },
     "%d of %d checks passed": {
       "extractionState": "manual",
       "localizations": {
@@ -95,13 +106,13 @@
         }
       }
     },
-    "A permission prompt or question from Claude Code.": {
+    "A permission prompt or a question from Claude Code. Keep the Mac awake to answer from your phone with Remote Control.": {
       "extractionState": "manual",
       "localizations": {
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Žádost o oprávnění nebo otázka od Claude Code."
+            "value": "Žádost o oprávnění nebo dotaz od Claude Code. Když Mac necháte vzhůru, můžete odpovědět z telefonu přes Remote Control."
           }
         }
       }
@@ -410,6 +421,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hooky Claude Code jsou zastaralé"
+          }
+        }
+      }
+    },
+    "Claude is still waiting for your answer": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude stále čeká na vaši odpověď"
           }
         }
       }
@@ -1212,6 +1234,17 @@
         }
       }
     },
+    "Maximum wait for an answer": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maximální čekání na odpověď"
+          }
+        }
+      }
+    },
     "Missing hooks: %@": {
       "extractionState": "manual",
       "localizations": {
@@ -1867,6 +1900,17 @@
         }
       }
     },
+    "Sleep after a delay": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uspat po prodlevě"
+          }
+        }
+      }
+    },
     "Sleep now": {
       "extractionState": "manual",
       "localizations": {
@@ -1951,17 +1995,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Spustí Vigil automaticky po přihlášení."
-          }
-        }
-      }
-    },
-    "Start sleep countdown": {
-      "extractionState": "manual",
-      "localizations": {
-        "cs": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Spustit odpočet spánku"
           }
         }
       }
@@ -2160,6 +2193,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Týdenní okno se obnovilo."
+          }
+        }
+      }
+    },
+    "Then Vigil notifies you and starts the sleep countdown.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potom vás Vigil upozorní a spustí odpočet do uspání."
           }
         }
       }
@@ -2373,13 +2417,13 @@
         }
       }
     },
-    "When Claude is waiting for me": {
+    "When Claude is waiting for an answer": {
       "extractionState": "manual",
       "localizations": {
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Když na mě Claude čeká"
+            "value": "Když Claude čeká na odpověď"
           }
         }
       }

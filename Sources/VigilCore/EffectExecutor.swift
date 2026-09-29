@@ -70,6 +70,11 @@ public actor EffectExecutor {
             case .droppedStuckSubagent(let project, let agentID, let agentType, let age):
                 Log.shared.warning("dropped stuck subagent \(agentType) (\(agentID.prefix(8))) in \(project): "
                                    + "no SubagentStop after \(Int(age / 60)) min")
+            case .waitTimedOut(let project, let waited):
+                Log.shared.warning("\(project) waited \(Int(waited / 60)) min for an answer; starting the sleep countdown")
+                notifier?.postWaitTimeout(project: project, waited: waited)
+            case .ignoredNotification(let type):
+                Log.shared.info("ignored Notification hook with unknown notification_type \(type ?? "(none)")")
             }
         }
     }

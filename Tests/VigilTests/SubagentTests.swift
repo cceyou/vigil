@@ -150,10 +150,10 @@ func subagent(_ kind: HookKind, _ agent: String, type: String? = "Explore", sess
     }
 
     @Test func subagentsKeepWaitingSessionAwakeUnderIdlePolicy() {
-        var m = machine()
+        var m = machine { $0.notificationPolicy = .treatAsIdle }
         _ = m.handle(hook(.userPromptSubmit), at: at(0))
         _ = m.handle(subagent(.subagentStart, "x1"), at: at(1))
-        #expect(m.handle(hook(.notification), at: at(5)).isEmpty) // waiting would count as idle, but a subagent works
+        #expect(m.handle(permissionPrompt(), at: at(5)).isEmpty) // waiting would count as idle, but a subagent works
         #expect(m.phase == .working)
     }
 

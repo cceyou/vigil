@@ -137,24 +137,25 @@ import Testing
 
     // MARK: notification policy
 
-    @Test func waitingCountsAsIdleByDefault() {
+    @Test func waitingKeepsMacAwakeByDefault() {
         var m = machine()
         _ = m.handle(hook(.userPromptSubmit), at: at(0))
-        #expect(m.handle(hook(.notification), at: at(5)) == [.showCountdown(deadline: at(35))])
+        #expect(m.handle(permissionPrompt(), at: at(5)).isEmpty)
         #expect(m.sessions[0].state == .waiting)
-    }
-
-    @Test func waitingCanKeepMacAwake() {
-        var m = machine { $0.notificationPolicy = .keepAwake }
-        _ = m.handle(hook(.userPromptSubmit), at: at(0))
-        #expect(m.handle(hook(.notification), at: at(5)).isEmpty)
         #expect(m.phase == .working)
     }
 
-    @Test func toolHeartbeatResumesWorkingAfterApprovedPermissionPrompt() {
-        var m = machine()
+    @Test func waitingCountsAsIdleUnderSleepAfterDelay() {
+        var m = machine { $0.notificationPolicy = .treatAsIdle }
         _ = m.handle(hook(.userPromptSubmit), at: at(0))
-        _ = m.handle(hook(.notification), at: at(5)) // permission prompt -> countdown
+        #expect(m.handle(permissionPrompt(), at: at(5)) == [.showCountdown(deadline: at(35))])
+        #expect(m.sessions[0].state == .waiting)
+    }
+
+    @Test func toolHeartbeatResumesWorkingAfterApprovedPermissionPrompt() {
+        var m = machine { $0.notificationPolicy = .treatAsIdle }
+        _ = m.handle(hook(.userPromptSubmit), at: at(0))
+        _ = m.handle(permissionPrompt(), at: at(5)) // sleep-after-delay policy: countdown
         #expect(m.handle(hook(.postToolUse), at: at(12)) == [.dismissCountdown])
         #expect(m.sessions[0].state == .working)
         #expect(m.phase == .working)

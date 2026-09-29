@@ -5,7 +5,7 @@ import Foundation
 public enum SessionState: String, Codable, Equatable, Sendable {
     case idle
     case working
-    /// Claude sent a Notification ("waiting for me").
+    /// Claude is waiting for the user: a permission prompt, a question (elicitation), or an agent needing input.
     case waiting
 }
 
@@ -46,6 +46,8 @@ public struct Session: Equatable, Identifiable, Sendable {
     public var maxSubagents = 0
     /// Total run time of subagents that have already finished.
     public var finishedSubagentTime: TimeInterval = 0
+    /// Waited longer than `Config.maxWaiting`: no longer keeps the Mac awake. Reset when a new wait starts.
+    public var waitExpired = false
 
     public var projectName: String {
         guard let cwd, !cwd.isEmpty else { return "Claude Code" }
@@ -113,11 +115,36 @@ public enum Phase: String, Equatable, Sendable {
     case countdown
 }
 
+/// What "Claude is waiting for the user" does to sleep.
 public enum NotificationPolicy: String, Codable, CaseIterable, Sendable {
-    /// "Claude is waiting for me" counts as idle and starts the sleep countdown.
+    /// Waiting counts as idle: the normal sleep countdown (the grace period) starts. "Uspat po prodlevě".
     case treatAsIdle
-    /// "Claude is waiting for me" keeps the Mac awake.
+    /// Waiting keeps the Mac awake (up to `Config.maxWaiting`), so a prompt can be answered from the phone
+    /// through Claude Code Remote Control. The default since settings revision 3.
     case keepAwake
+}
+
+/// Claude Code's Notification hook carries a `notification_type`. Only some of them mean "waiting for you".
+public enum ClaudeNotificationType {
+    public enum Meaning: Equatable, Sendable {
+        /// Claude needs an answer: keep the session busy (under the default policy).
+        case waiting
+        /// Claude finished and the prompt is sitting idle. Never keeps the Mac awake.
+        case idle
+        /// Unknown or missing type: logged and ignored.
+        case unknown
+    }
+
+    public static let waitingTypes: Set<String> = ["permission_prompt", "elicitation_dialog", "elicitation_url_dialog",
+                                                   "agent_needs_input"]
+    public static let idleTypes: Set<String> = ["idle_prompt"]
+
+    public static func meaning(of type: String?) -> Meaning {
+        guard let type else { return .unknown }
+        if waitingTypes.contains(type) { return .waiting }
+        if idleTypes.contains(type) { return .idle }
+        return .unknown
+    }
 }
 
 public enum ThermalLevel: Int, Codable, Equatable, Sendable {
@@ -148,7 +175,9 @@ public struct Config: Equatable, Codable, Sendable {
     /// Percent. 0 turns the guard off.
     public var lowBatteryThreshold: Int = 5
     public var sleepOnlyIfLidClosed: Bool = false
-    public var notificationPolicy: NotificationPolicy = .treatAsIdle
+    public var notificationPolicy: NotificationPolicy = .keepAwake
+    /// Under `.keepAwake`: after waiting this long for an answer, notify and start the normal sleep countdown.
+    public var maxWaiting: TimeInterval = 2 * 3600
     public var manualKeepAwake: TimeInterval = 3600
     /// A subagent with no SubagentStop for this long is dropped (a lost hook must not pin the Mac awake).
     public var stuckSubagentLimit: TimeInterval = 2 * 3600
@@ -164,6 +193,7 @@ public struct Config: Equatable, Codable, Sendable {
         lowBatteryThreshold = try c.decodeIfPresent(Int.self, forKey: .lowBatteryThreshold) ?? d.lowBatteryThreshold
         sleepOnlyIfLidClosed = try c.decodeIfPresent(Bool.self, forKey: .sleepOnlyIfLidClosed) ?? d.sleepOnlyIfLidClosed
         notificationPolicy = try c.decodeIfPresent(NotificationPolicy.self, forKey: .notificationPolicy) ?? d.notificationPolicy
+        maxWaiting = try c.decodeIfPresent(TimeInterval.self, forKey: .maxWaiting) ?? d.maxWaiting
         manualKeepAwake = try c.decodeIfPresent(TimeInterval.self, forKey: .manualKeepAwake) ?? d.manualKeepAwake
         stuckSubagentLimit = try c.decodeIfPresent(TimeInterval.self, forKey: .stuckSubagentLimit) ?? d.stuckSubagentLimit
     }
@@ -185,8 +215,11 @@ public enum HookKind: String, Codable, Equatable, Sendable {
     case stop = "Stop"
     case notification = "Notification"
     case sessionEnd = "SessionEnd"
-    /// Heartbeat: a tool call finished, so Claude is working.
+    /// Heartbeat: a tool call finished, so Claude is working (and a waiting session has been answered).
     case postToolUse = "PostToolUse"
+    /// A permission dialog is about to be shown: a second "waiting for the user" signal next to Notification.
+    /// hook.sh never prints a decision, so Claude Code always asks the user as usual.
+    case permissionRequest = "PermissionRequest"
     /// A subagent (Agent tool, background agent) started; carries agent_id and agent_type.
     case subagentStart = "SubagentStart"
     /// A subagent finished; carries agent_id.
@@ -203,15 +236,18 @@ public struct HookEvent: Equatable, Sendable {
     /// Subagent hooks only.
     public var agentID: String?
     public var agentType: String?
+    /// Notification hooks only (`permission_prompt`, `idle_prompt`, ...).
+    public var notificationType: String?
 
     public init(kind: HookKind, sessionID: String, cwd: String? = nil, pid: Int32? = nil,
-                agentID: String? = nil, agentType: String? = nil) {
+                agentID: String? = nil, agentType: String? = nil, notificationType: String? = nil) {
         self.kind = kind
         self.sessionID = sessionID
         self.cwd = cwd
         self.pid = pid
         self.agentID = agentID
         self.agentType = agentType
+        self.notificationType = notificationType
     }
 }
 
@@ -242,6 +278,10 @@ public enum Effect: Equatable, Sendable {
     case record(SessionRecord)
     /// A subagent hit the stuck-subagent limit and was dropped; the executor logs a warning.
     case droppedStuckSubagent(project: String, agentID: String, agentType: String, age: TimeInterval)
+    /// A session waited for an answer longer than `Config.maxWaiting`; the executor notifies the user.
+    case waitTimedOut(project: String, waited: TimeInterval)
+    /// A Notification hook with an unknown (or missing) `notification_type`; the executor logs it.
+    case ignoredNotification(type: String?)
 }
 
 // MARK: - State machine
@@ -288,7 +328,7 @@ public struct StateMachine: Equatable {
         if !session.subagents.isEmpty { return true }
         switch session.state {
         case .working: return true
-        case .waiting: return config.notificationPolicy == .keepAwake
+        case .waiting: return config.notificationPolicy == .keepAwake && !session.waitExpired
         case .idle: return false
         }
     }
@@ -395,10 +435,7 @@ public struct StateMachine: Equatable {
             }
             sessions[index].lastEventAt = now
             if let pid = hook.pid { sessions[index].pid = pid }
-            if sessions[index].state == .waiting {
-                sessions[index].state = .working
-                sessions[index].stateSince = now
-            }
+            if sessions[index].state == .waiting { setState(.working, at: index, now: now) }
             return
 
         case .subagentStart:
@@ -421,7 +458,21 @@ public struct StateMachine: Equatable {
             if let pid = hook.pid { sessions[index].pid = pid }
             return
 
-        case .sessionStart, .userPromptSubmit, .stop, .notification:
+        case .notification:
+            switch ClaudeNotificationType.meaning(of: hook.notificationType) {
+            case .waiting:
+                break
+            case .idle:
+                // Claude finished and the prompt sits idle. It never creates a session, keeps anything awake,
+                // or restarts a running countdown: an idle session simply stays idle.
+                if let index, sessions[index].state != .idle { setState(.idle, at: index, now: now) }
+                return
+            case .unknown:
+                fx.append(.ignoredNotification(type: hook.notificationType))
+                return
+            }
+
+        case .sessionStart, .userPromptSubmit, .stop, .permissionRequest:
             break
         }
 
@@ -431,15 +482,18 @@ public struct StateMachine: Equatable {
         switch hook.kind {
         case .userPromptSubmit: newState = .working
         case .stop: newState = .idle
-        case .notification: newState = .waiting
+        case .notification, .permissionRequest: newState = .waiting
         default: newState = nil // sessionStart: keeps current (idle for a new session)
         }
-        if let newState, sessions[i].state != newState {
-            sessions[i].state = newState
-            sessions[i].stateSince = now
-        }
+        if let newState, sessions[i].state != newState { setState(newState, at: i, now: now) }
         // A fresh prompt lifts a manual-sleep latch.
         if hook.kind == .userPromptSubmit, latch == .manualSleep { latch = nil }
+    }
+
+    private mutating func setState(_ state: SessionState, at index: Int, now: Date) {
+        sessions[index].state = state
+        sessions[index].stateSince = now
+        sessions[index].waitExpired = false
     }
 
     /// Index of the hook's session (created idle if new), with lastEventAt / cwd / pid refreshed.
@@ -494,6 +548,17 @@ public struct StateMachine: Equatable {
                 let age = now.timeIntervalSince(a.startedAt)
                 sessions[i].finishedSubagentTime += age
                 fx.append(.droppedStuckSubagent(project: sessions[i].projectName, agentID: a.id, agentType: a.type, age: age))
+            }
+        }
+
+        // Max wait: a session that has waited for an answer too long stops keeping the Mac awake. Reconcile
+        // then starts the normal sleep countdown (unless something else still works).
+        if config.notificationPolicy == .keepAwake {
+            for i in sessions.indices where sessions[i].state == .waiting && !sessions[i].waitExpired {
+                let waited = now.timeIntervalSince(sessions[i].stateSince)
+                guard waited >= config.maxWaiting else { continue }
+                sessions[i].waitExpired = true
+                fx.append(.waitTimedOut(project: sessions[i].projectName, waited: waited))
             }
         }
 

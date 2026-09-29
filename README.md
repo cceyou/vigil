@@ -83,36 +83,42 @@ Your previous `statusLine` object is saved verbatim in `statusline.original.json
 Claude Code ──hook──▶ hook.sh ──nc -U──▶ vigil.sock ──▶ StateMachine ──▶ effects (pmset, IOPM, notifications)
 ```
 
-**Hooks** (installed into `~/.claude/settings.json`, each marked by the command path `…/Vigil/hook.sh` so they can be removed cleanly, and stamped with the hook-set version, e.g. `…/hook.sh" Stop --vigil-hooks=2`):
+**Hooks** (installed into `~/.claude/settings.json`, each marked by the command path `…/Vigil/hook.sh` so they can be removed cleanly, and stamped with the hook-set version, e.g. `…/hook.sh" Stop --vigil-hooks=3`):
 
 | Hook | Meaning |
 |---|---|
 | `SessionStart` | a session exists (idle) |
 | `UserPromptSubmit` | **working** |
 | `Stop` | done (idle) |
-| `Notification` | Claude is waiting for you (see policy below) |
+| `Notification` | depends on `notification_type`: `permission_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input` = **waiting for you**; `idle_prompt` = idle (Claude finished, the prompt sits idle); anything else is logged and ignored |
+| `PermissionRequest` (matcher `*`) | a permission dialog is shown: **waiting for you** (a second signal next to `Notification`). `hook.sh` never prints a decision, so Claude Code always asks as usual |
 | `SessionEnd` | session gone |
-| `PostToolUse` | *heartbeat* (an addition beyond the five you asked for, see below) |
+| `PostToolUse` (matcher `*`) | *heartbeat*: a tool ran, so a waiting session has been answered and is **working** again (see below) |
 | `SubagentStart` | a subagent (Agent tool, background agent) started: the session is **working** |
 | `SubagentStop` | that subagent finished |
 
 `hook.sh` (installed at `~/Library/Application Support/Vigil/hook.sh`) reads the hook JSON on stdin, walks up the process tree to find the `claude`/`node` PID, and sends one JSON line to the app's Unix socket with `/usr/bin/nc -U -w 1`. It **always exits 0, prints nothing**, and does nothing if Vigil is not running (≈10-15 ms per call).
 
-**Why `PostToolUse`?** When you approve a permission prompt, Claude Code fires *no* `UserPromptSubmit`, so a session that had sent a `Notification` would stay "waiting" while Claude works again, and with the default policy the Mac could go to sleep mid-task. The heartbeat flips a *waiting* session back to *working*. It also lets Vigil adopt a session it missed (for example if Vigil restarted mid-task; PID required). It never revives an *idle* session. Remove it by deleting the `PostToolUse` entry if you don't want it; everything else keeps working.
+**Why `PostToolUse`?** When you approve a permission prompt, Claude Code fires *no* `UserPromptSubmit`, so a session that had sent a `Notification` would stay "waiting" while Claude works again (and under *Sleep after a delay* the Mac could go to sleep mid-task). The heartbeat flips a *waiting* session back to *working*. It also lets Vigil adopt a session it missed (for example if Vigil restarted mid-task; PID required). It never revives an *idle* session. Remove it by deleting the `PostToolUse` entry if you don't want it; everything else keeps working.
 
-**Hook versions.** When Vigil's hook set changes (version 2 added `SubagentStart`/`SubagentStop`), Vigil notices that the entries in `settings.json` are older than the app and shows **Update hooks** in Settings, in the setup checklist and in the self-test. Updating backs up `settings.json`, replaces only Vigil's own entries (whatever version they are) and leaves every other hook untouched, including hooks that share a group with Vigil's. Running it twice changes nothing. **Already-running Claude Code sessions must be restarted** to pick up the new hooks.
+**Hook versions.** When Vigil's hook set changes (version 2 added `SubagentStart`/`SubagentStop`; version 3 added `PermissionRequest` and the `*` matcher on `PostToolUse`), Vigil notices that the entries in `settings.json` are older than the app and shows **Update hooks** in Settings, in the setup checklist and in the self-test. Updating backs up `settings.json`, replaces only Vigil's own entries (whatever version they are) and leaves every other hook untouched, including hooks that share a group with Vigil's. Running it twice changes nothing. **Already-running Claude Code sessions must be restarted** to pick up the new hooks.
 
 **Subagents.** The main agent can end its turn (`Stop`) while subagents it started keep working. Vigil keeps a set of active subagents per session, keyed by `agent_id` (with `agent_type` and start time): `SubagentStart` adds one, `SubagentStop` removes it. A `SubagentStop` for an agent Vigil never saw start (for example Vigil launched mid-session) is ignored.
 
 **Rules**
 - A session is **working** if its main agent got `UserPromptSubmit` without a `Stop` since, **or** it has at least one active subagent.
-- The Mac may sleep only when **all** sessions are idle by that definition, waiting (default policy) or ended.
+- The Mac may sleep only when **all** sessions are idle by that definition or ended. A session **waiting for you** keeps the Mac awake under the default policy (see below).
 - `Stop` while subagents are still running only marks the main agent idle; no countdown starts. The countdown starts when the **last** `SubagentStop` arrives, and a `SubagentStart` during the countdown cancels it.
 - **Stuck-subagent guard**: a subagent with no `SubagentStop` for longer than the *stuck subagent limit* (default 2 h) is dropped with a warning in the log. `SessionEnd` or a dead Claude process clears all of that session's subagents.
 - After the last session goes idle, a **grace period** (default 30 s) starts. That is also the countdown you see ("Sleeping in 0:24") and the notification with **Cancel** / **Keep awake**. A new prompt during the countdown cancels it.
 - When it expires: `pmset -a disablesleep 0` is restored **first**, then `pmset sleepnow`. Always in that order (the executor is a single ordered queue).
 - Ctrl+C fires no `Stop`, so every 10 s Vigil checks each session's PID with `kill(pid, 0)` and drops dead ones. A "working" session with no events for longer than the max duration is dropped too.
-- *Notification policy* (Settings): treat "waiting for me" as idle and start the countdown (default), or keep awake.
+- **Waiting for your answer** (Settings ▸ *When Claude is waiting for an answer*):
+  - *Keep awake* (default): a waiting session counts as busy, so you can answer permission prompts and questions from your phone through Claude Code Remote Control while the lid is closed. The island shows *Čeká* in orange. `PostToolUse` (or a new prompt) moves the session back to working once you have answered.
+  - *Maximum wait for an answer* (default 2 h, 30 min to 8 h): after waiting that long Vigil notifies you and starts the normal sleep countdown. Answering later still works; the next wait gets a fresh timer.
+  - *Sleep after a delay*: waiting counts as idle and the grace-period countdown starts.
+  - `idle_prompt` is never "waiting": it cannot keep the Mac awake or restart a countdown.
+  - Upgrading: a policy still at the old default (*Sleep after a delay*) moves to *Keep awake* once (settings revision 3). A policy you changed yourself is kept, and choosing *Sleep after a delay* again afterwards sticks.
 - *Only sleep if the lid is closed* (default off): with the lid open, Vigil restores normal sleep but does not force it.
 - While awake, Vigil holds `pmset disablesleep 1` (lid-closed, on battery) **and** IOPM assertions `PreventUserIdleSystemSleep` + `PreventSystemSleep` (idle sleep).
 
@@ -148,7 +154,7 @@ For a personal tool the sudoers rule is the simpler trade; if you distribute Vig
 
 ## Settings
 
-Watch Claude Code on/off, launch at login, grace period (10 s to 5 min), maximum keep-awake (1 to 24 h), stuck subagent limit (30 min, 1, 2 or 4 h), low-battery threshold, only-sleep-if-lid-closed, notification policy, install/update/remove hooks, install/remove sleep permission, Dry run, Run self-test, Open log. **Look**: accent colour (green, blue, orange, purple). **Edge notch and usage**: notch on/off, position on the edge, displays (all / main), hover delay, hide in full-screen apps, keyboard shortcut (record a new one, or turn it off), usage notifications, install/remove the status line.
+Watch Claude Code on/off, launch at login, grace period (10 s to 5 min), maximum keep-awake (1 to 24 h), stuck subagent limit (30 min, 1, 2 or 4 h), low-battery threshold, only-sleep-if-lid-closed, waiting-for-an-answer policy and maximum wait (30 min to 8 h), install/update/remove hooks, install/remove sleep permission, Dry run, Run self-test, Open log. **Look**: accent colour (green, blue, orange, purple). **Edge notch and usage**: notch on/off, position on the edge, displays (all / main), hover delay, hide in full-screen apps, keyboard shortcut (record a new one, or turn it off), usage notifications, install/remove the status line.
 
 **Dry run** goes through the whole flow (working → idle → countdown → restore → sleep) but only logs `would run: pmset …`, and never calls `pmset`. Use *Simulate a session* to watch it happen (the simulated session includes a subagent that outlives the main agent's `Stop`).
 

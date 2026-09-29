@@ -95,6 +95,17 @@ public final class Notifier: NSObject, UNUserNotificationCenterDelegate, @unchec
         center.add(UNNotificationRequest(identifier: "vigil.guard.\(reason.rawValue)", content: content, trigger: nil))
     }
 
+    /// Claude waited longer than the maximum wait for an answer; the normal sleep countdown follows.
+    public func postWaitTimeout(project: String, waited: TimeInterval) {
+        guard let center else { return }
+        let content = UNMutableNotificationContent()
+        content.title = L("Claude is still waiting for your answer")
+        content.body = L("%@ has waited %@. Your Mac will go to sleep after the grace period.", project,
+                         Durations.short(waited))
+        content.sound = .default
+        center.add(UNNotificationRequest(identifier: "vigil.waitTimeout", content: content, trigger: nil))
+    }
+
     /// Claude usage crossed a threshold or a window reset.
     public func postUsage(_ alert: UsageAlert, resetsAt: Date?) {
         guard let center else { return }

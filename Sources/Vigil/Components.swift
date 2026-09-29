@@ -153,12 +153,3 @@ struct ActionButton: View {
         .transition(.opacity)
     }
 }
-
-enum Durations {
-    static func short(_ seconds: TimeInterval) -> String {
-        let s = Int(seconds)
-        if s < 60 { return "\(s) s" }
-        if s < 3600 { return "\(s / 60) min" }
-        return "\(s / 3600) h"
-    }
-}
