@@ -61,7 +61,7 @@ A 5×56 pt glass pill sits on the right edge of the screen (vertically centred b
 **The card** (Liquid Glass via `.glassEffect()` on macOS 26, `.ultraThinMaterial` with a hairline and a soft shadow before that) is monochrome. Its only colours are warnings: a bar turns orange at 80 % and red at 95 %, a context ring turns orange at 80 % (*brzy auto-compact*). It shows:
 
 - *Aktuální relace* (5-hour window) and *Tento týden* (weekly window): percentage, bar, reset time, and for the week a pace line comparing used % with the elapsed share of the week (*Tempo v pořádku* or *Při tomto tempu limit dojde v pátek kolem 14:00*).
-- How fresh the data is; after 15 minutes: *Data z 14:02 — spusť Claude Code pro aktualizaci*. Once a window's reset time has passed it shows 0 % / *Obnoveno* instead of the old number.
+- How fresh the data is; after 15 minutes: *Data z 14:02 — pro aktualizaci spusťte Claude Code*. Once a window's reset time has passed it shows 0 % / *Obnoveno* instead of the old number.
 - Up to three Claude Code sessions with model name and context-window use, then the Vigil state and **+1 h** / **Uspat** buttons.
 
 **Where the numbers come from.** Only documented sources: Claude Code pipes JSON to the status line command on stdin. Since v2.1.80, when you are logged in with a **Claude.ai Pro or Max** subscription, it includes `rate_limits.five_hour` and `rate_limits.seven_day` (`used_percentage`, `resets_at` in epoch seconds), plus `session_id`, `cwd`, `model.display_name` and `context_window.used_percentage`. `rate_limits` appears only **after the first API response** of a session. Vigil does not call undocumented endpoints and does not read OAuth tokens from the Keychain. With an API key or an older Claude Code the card says why it is empty; everything else keeps working.
@@ -75,7 +75,7 @@ A 5×56 pt glass pill sits on the right edge of the screen (vertically centred b
 
 Your previous `statusLine` object is saved verbatim in `statusline.original.json` (its command in `statusline.chain`), and Vigil's entry keeps its other keys such as `padding`. **Remove** (Settings ▸ Status line, or `uninstall.sh`) puts it back exactly, or drops the key if there was none. Installing twice changes nothing.
 
-**Notifications** (on by default): the 5-hour window crosses 80 % and 95 %, the weekly window crosses 80 %, and *Limit obnoven — můžeš pokračovat* when a window with usage in it resets. Each fires once per window cycle. The last known values are kept in `usage.json`.
+**Notifications** (on by default): the 5-hour window crosses 80 % and 95 %, the weekly window crosses 80 %, and *Limit obnoven — můžete pokračovat* when a window with usage in it resets. Each fires once per window cycle. The last known values are kept in `usage.json`.
 
 ## How it works
 

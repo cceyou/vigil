@@ -613,7 +613,7 @@
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Data z %@ — spusť Claude Code pro aktualizaci"
+            "value": "Data z %@ — pro aktualizaci spusťte Claude Code"
           }
         }
       }
@@ -877,7 +877,7 @@
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Najeďte na něj myší a uvidíte využití Claude."
+            "value": "Najeďte na něj myší a uvidíte své využití Claude."
           }
         }
       }
@@ -1097,7 +1097,7 @@
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Limit obnoven — můžeš pokračovat"
+            "value": "Limit obnoven — můžete pokračovat"
           }
         }
       }
@@ -1884,7 +1884,7 @@
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ukáže limity Claude na okraji obrazovky. Vaše současná status line dál funguje."
+            "value": "Zobrazí vaše limity Claude na okraji obrazovky. Vaše současná status line dál funguje."
           }
         }
       }
@@ -2335,7 +2335,7 @@
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vigil čte limity ze status line Claude Code. Po instalaci vaše současná status line dál funguje."
+            "value": "Vigil čte vaše limity ze status line Claude Code. Po instalaci vaše současná status line dál funguje."
           }
         }
       }
@@ -2368,7 +2368,7 @@
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tak dlouho počkat po dokončení práce Claude, než se Mac uspí."
+            "value": "Jak dlouho Vigil po dokončení práce Claude počká, než Mac uspí."
           }
         }
       }

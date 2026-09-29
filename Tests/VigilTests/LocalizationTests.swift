@@ -45,6 +45,30 @@ import Testing
         }
     }
 
+    /// One tone: formal "vy", like macOS ("spusťte", "můžete pokračovat", "vaši"). Catches informal "ty" forms:
+    /// second-person singular verbs (-eš, -áš, "jsi"), "ty" pronouns and possessives, and common informal imperatives.
+    @Test func czechUsesTheFormalYouEverywhere() throws {
+        let catalog = try Self.catalog()
+        // "ty"/"ti" are left out: they are also the plural "those" ("ty hooky"). "váš" is formal.
+        let words = [#"\w+eš"#, #"(?!váš\b)\w+áš"#, "jsi", "tebe", "tobě", "tě", "tvůj", "tvoje?", "tvá", "tvé", "tvých", "tvým", "tvou",
+                     "spusť", "klikni", "otevři", "zkus", "zapni", "vypni", "připoj", "nainstaluj", "restartuj", "aktualizuj",
+                     "počkej", "nech", "podívej", "zkontroluj", "povol"]
+        let informal = try NSRegularExpression(pattern: #"(?i)\b("# + words.joined(separator: "|") + #")\b"#)
+        var checked = 0
+        for (key, entry) in catalog {
+            guard let value = czech(entry) else { continue }
+            checked += 1
+            let range = NSRange(value.startIndex..., in: value)
+            let hits = informal.matches(in: value, range: range).map { String(value[Range($0.range, in: value)!]) }
+            #expect(hits.isEmpty, "informal Czech \(hits) in \"\(value)\" (key: \(key))")
+        }
+        #expect(checked > 200)
+        // The pattern itself works.
+        for sample in ["Data z 14:02 — spusť Claude Code", "Limit obnoven — můžeš pokračovat", "tvůj Mac"] {
+            #expect(informal.firstMatch(in: sample, range: NSRange(sample.startIndex..., in: sample)) != nil, "\(sample)")
+        }
+    }
+
     @Test func translationsKeepTheSameFormatSpecifiers() throws {
         let catalog = try Self.catalog()
         for (key, entry) in catalog {
