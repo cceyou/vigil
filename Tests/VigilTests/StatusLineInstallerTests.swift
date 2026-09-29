@@ -193,32 +193,6 @@ import Testing
     }
 }
 
-@Suite struct SettingsDecodingTests {
-    @Test func oldSettingsLoadWithNewDefaults() throws {
-        let suite = "vigil-test-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        // Saved before the UI settings existed: nothing may reset to defaults.
-        let old = #"{"enabled":false,"hasSeenOnboarding":true,"dryRun":true,"revision":2,"config":{"graceSeconds":120}}"#
-        defaults.set(Data(old.utf8), forKey: "vigil.settings.v1")
-        let loaded = SettingsStore(defaults: defaults).load()
-        #expect(loaded.enabled == false)
-        #expect(loaded.dryRun == true)
-        #expect(loaded.hasSeenOnboarding)
-        #expect(loaded.config.graceSeconds == 120)
-        #expect(loaded.ui == UISettings())
-        #expect(loaded.ui.notchEnabled && loaded.ui.hideInFullScreen && loaded.ui.usageNotifications)
-        #expect(loaded.ui.shortcut == HotKeySpec(enabled: true, keyCode: 32, modifiers: 0x0900))
-
-        var changed = loaded
-        changed.ui.accent = .purple
-        changed.ui.notchPosition = 0.3
-        changed.ui.notchDisplays = .main
-        SettingsStore(defaults: defaults).save(changed)
-        #expect(SettingsStore(defaults: defaults).load() == changed)
-    }
-}
-
 /// Thread-safe collector for status line snapshots arriving from the socket server.
 final class SnapshotBox: @unchecked Sendable {
     private let lock = NSLock()

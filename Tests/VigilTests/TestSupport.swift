@@ -41,3 +41,42 @@ final class EventBox: @unchecked Sendable {
         return all.count >= n
     }
 }
+
+/// A private UserDefaults suite for one test, so nothing ever lands in ~/Library/Preferences.
+///
+/// A plain suite name is not enough: even after `removePersistentDomain` (or removing every key, with or without
+/// `CFPreferencesAppSynchronize`), cfprefsd writes an empty 42-byte `~/Library/Preferences/<suite>.plist` once
+/// the test process exits. So the suite name is an absolute path in a temp directory: CFPreferences then keeps
+/// the domain in `<path>.plist` there instead. `tearDown()` still removes the domain, and each run clears the
+/// directory of files left by earlier runs. Call `tearDown()` from the suite's `deinit` (Swift Testing makes a
+/// fresh suite instance per test, so `deinit` is the per-test tearDown).
+final class TestDefaults {
+    static let prefix = "vigil-test-"
+    static let directory: URL = {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("vigil-test-prefs")
+        try? FileManager.default.removeItem(at: dir) // leftovers from earlier runs
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    let id = "\(TestDefaults.prefix)\(UUID().uuidString)"
+    /// The suite name: an absolute path, so the backing plist is `<name>.plist` in the temp directory.
+    let name: String
+    let defaults: UserDefaults
+
+    init() {
+        name = Self.directory.appendingPathComponent(id).path
+        defaults = UserDefaults(suiteName: name)!
+    }
+
+    /// Where a plain `UserDefaults(suiteName: id)` would have put its file. Must never exist.
+    var realPreferencesPlist: URL {
+        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Preferences/\(id).plist")
+    }
+
+    func tearDown() {
+        defaults.removePersistentDomain(forName: name)
+        CFPreferencesAppSynchronize(name as CFString)
+        try? FileManager.default.removeItem(atPath: name + ".plist")
+    }
+}

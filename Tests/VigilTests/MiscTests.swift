@@ -50,40 +50,6 @@ import Testing
         #expect(HistoryStore(url: dir.appendingPathComponent("history.json")).load().count == 50)
     }
 
-    @Test func settingsRoundTrip() {
-        let name = "vigil-test-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: name)!
-        defer { suite.removePersistentDomain(forName: name) } // no leftover plist in ~/Library/Preferences
-        let store = SettingsStore(defaults: suite)
-        #expect(store.load() == AppSettings())
-        var s = AppSettings()
-        s.enabled = false
-        s.config.graceSeconds = 90
-        s.config.notificationPolicy = .keepAwake
-        store.save(s)
-        #expect(store.load() == s)
-    }
-
-    @Test func settingsMigrationMovesOldBatteryDefault() {
-        let name = "vigil-test-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: name)!
-        defer { suite.removePersistentDomain(forName: name) } // no leftover plist in ~/Library/Preferences
-        let store = SettingsStore(defaults: suite)
-        // Saved by a build before migrations existed: no "revision" key, threshold at the old 15 % default.
-        let old = #"{"enabled":true,"hasSeenOnboarding":true,"dryRun":false,"config":{"lowBatteryThreshold":15,"maxKeepAwake":28800,"sleepOnlyIfLidClosed":true,"notificationPolicy":"treatAsIdle","manualKeepAwake":3600,"graceSeconds":300}}"#
-        suite.set(Data(old.utf8), forKey: "vigil.settings.v1")
-        let loaded = store.load()
-        #expect(loaded.config.lowBatteryThreshold == 5)
-        #expect(loaded.config.graceSeconds == 300)
-        #expect(loaded.revision == AppSettings.currentRevision)
-
-        // A value the user picked on purpose (after migration) is left alone.
-        var chosen = loaded
-        chosen.config.lowBatteryThreshold = 15
-        store.save(chosen)
-        #expect(store.load().config.lowBatteryThreshold == 15)
-    }
-
     @Test func watchdogScriptRestoresOnlyWhenArmed() {
         let script = SystemPowerController.watchdogScript(appPID: 4242, appName: "Vigil", armFile: "/tmp/x/watchdog.armed")
         #expect(script.contains("ps -p 4242"))

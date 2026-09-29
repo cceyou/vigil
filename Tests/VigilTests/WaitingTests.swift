@@ -3,7 +3,7 @@ import Testing
 @testable import VigilCore
 
 /// "Claude is waiting for the user": Notification types, PermissionRequest, the PostToolUse heartbeat,
-/// the max-wait timeout and the settings migration.
+/// and the max-wait timeout. The waiting-policy migration is in SettingsStoreTests.
 @Suite struct WaitingTests {
     // MARK: notification_type
 
@@ -160,49 +160,5 @@ import Testing
         #expect(HookEventParser.parse(Data(none.utf8))?.notificationType == nil)
         let perm = #"{"vigil_event":"PermissionRequest","payload":{"session_id":"s","tool_name":"Bash"}}"#
         #expect(HookEventParser.parse(Data(perm.utf8))?.kind == .permissionRequest)
-    }
-
-    // MARK: migration
-
-    private func load(_ json: String) -> AppSettings {
-        let name = "vigil-test-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: name)!
-        defer { suite.removePersistentDomain(forName: name) }
-        suite.set(Data(json.utf8), forKey: "vigil.settings.v1")
-        return SettingsStore(defaults: suite).load()
-    }
-
-    @Test func migrationMovesTheOldDefaultPolicyToKeepAwake() {
-        let rev2 = load(#"{"revision":2,"config":{"notificationPolicy":"treatAsIdle","graceSeconds":120}}"#)
-        #expect(rev2.config.notificationPolicy == .keepAwake)
-        #expect(rev2.config.graceSeconds == 120)
-        #expect(rev2.config.maxWaiting == 2 * 3600)
-        #expect(rev2.revision == AppSettings.currentRevision)
-        let unversioned = load(#"{"config":{"notificationPolicy":"treatAsIdle"}}"#)
-        #expect(unversioned.config.notificationPolicy == .keepAwake)
-    }
-
-    @Test func migrationKeepsAPolicyTheUserChanged() {
-        #expect(load(#"{"revision":2,"config":{"notificationPolicy":"keepAwake","maxWaiting":1800}}"#).config.maxWaiting == 1800)
-        // Chosen after the migration ran: "sleep after a delay" sticks.
-        #expect(load(#"{"revision":3,"config":{"notificationPolicy":"treatAsIdle"}}"#).config.notificationPolicy == .treatAsIdle)
-    }
-
-    @Test func migrationRunsOnlyOnce() {
-        let name = "vigil-test-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: name)!
-        defer { suite.removePersistentDomain(forName: name) }
-        suite.set(Data(#"{"revision":2,"config":{"notificationPolicy":"treatAsIdle"}}"#.utf8), forKey: "vigil.settings.v1")
-        let store = SettingsStore(defaults: suite)
-        var s = store.load()
-        #expect(s.config.notificationPolicy == .keepAwake)
-        s.config.notificationPolicy = .treatAsIdle
-        store.save(s)
-        #expect(store.load().config.notificationPolicy == .treatAsIdle)
-    }
-
-    @Test func freshSettingsDefaultToKeepAwake() {
-        #expect(Config().notificationPolicy == .keepAwake)
-        #expect(Config().maxWaiting == 2 * 3600)
     }
 }
