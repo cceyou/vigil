@@ -5,7 +5,17 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var config = Config()
     public var dryRun = false
     public var hasSeenOnboarding = false
-    public init() {}
+    /// Settings migrations applied so far (nil = saved before migrations existed).
+    public var revision: Int?
+    public static let currentRevision = 2
+    public init() { revision = Self.currentRevision }
+
+    /// Revision 2: the low-battery default dropped from 15 % to 5 %. At 15 % the guard kept tripping in normal
+    /// use and the Mac slept as soon as the lid closed; a value still at the old default moves to the new one.
+    public mutating func migrate() {
+        if (revision ?? 1) < 2, config.lowBatteryThreshold == 15 { config.lowBatteryThreshold = 5 }
+        revision = Self.currentRevision
+    }
 }
 
 public final class SettingsStore: @unchecked Sendable {
@@ -18,7 +28,10 @@ public final class SettingsStore: @unchecked Sendable {
         guard let data = defaults.data(forKey: key), let s = try? JSONDecoder().decode(AppSettings.self, from: data) else {
             return AppSettings()
         }
-        return s
+        var migrated = s
+        migrated.migrate()
+        if migrated != s { save(migrated) }
+        return migrated
     }
 
     public func save(_ settings: AppSettings) {

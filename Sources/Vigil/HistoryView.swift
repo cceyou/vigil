@@ -31,6 +31,11 @@ struct HistoryView: View {
                                     Text(record.project).font(.system(size: 13, weight: .medium)).lineLimit(1)
                                     Text(record.startedAt, format: .dateTime.day().month().hour().minute())
                                         .font(.system(size: 11)).foregroundStyle(.secondary)
+                                    if record.maxSubagents > 0 {
+                                        Label(L("Up to %@ · %@ total", Format.subagents(record.maxSubagents), Format.clock(record.subagentTime)),
+                                              systemImage: "arrow.triangle.branch")
+                                            .font(.system(size: 10)).foregroundStyle(.tertiary).monospacedDigit()
+                                    }
                                 }
                                 Spacer()
                                 VStack(alignment: .trailing, spacing: 1) {

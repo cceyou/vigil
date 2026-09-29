@@ -29,7 +29,7 @@ The first launch opens the popover with a checklist. Each item shows a green che
 3. **Notifications**: click *Allow* and accept the macOS prompt.
 4. **Launch at login**: click *Enable*.
 
-Then click **Run self-test**. It checks the sudo permission, the hooks, the socket, a fake hook event sent through the real `hook.sh`, and notification authorization, with a fix button next to anything that fails.
+Then click **Run self-test**. It checks the sudo permission, the hooks (present *and* up to date), the socket, a fake hook event sent through the real `hook.sh`, a fake `SubagentStart` → `SubagentStop` pair (the session must go working → idle), and notification authorization, with a fix button next to anything that fails. The fake subagent events run through a private sandbox state machine, so the self-test can never hold the Mac awake or put it to sleep.
 
 > Restart Claude Code sessions that were already running so they load the new hooks. (Recent Claude Code versions also pick up hook changes live, but restarting is the documented way.)
 
@@ -39,7 +39,7 @@ Then click **Run self-test**. It checks the sudo permission, the hooks, the sock
 Claude Code ──hook──▶ hook.sh ──nc -U──▶ vigil.sock ──▶ StateMachine ──▶ effects (pmset, IOPM, notifications)
 ```
 
-**Hooks** (installed into `~/.claude/settings.json`, each marked by the command path `…/Vigil/hook.sh` so they can be removed cleanly):
+**Hooks** (installed into `~/.claude/settings.json`, each marked by the command path `…/Vigil/hook.sh` so they can be removed cleanly, and stamped with the hook-set version, e.g. `…/hook.sh" Stop --vigil-hooks=2`):
 
 | Hook | Meaning |
 |---|---|
@@ -49,13 +49,22 @@ Claude Code ──hook──▶ hook.sh ──nc -U──▶ vigil.sock ──�
 | `Notification` | Claude is waiting for you (see policy below) |
 | `SessionEnd` | session gone |
 | `PostToolUse` | *heartbeat* (an addition beyond the five you asked for, see below) |
+| `SubagentStart` | a subagent (Agent tool, background agent) started: the session is **working** |
+| `SubagentStop` | that subagent finished |
 
 `hook.sh` (installed at `~/Library/Application Support/Vigil/hook.sh`) reads the hook JSON on stdin, walks up the process tree to find the `claude`/`node` PID, and sends one JSON line to the app's Unix socket with `/usr/bin/nc -U -w 1`. It **always exits 0, prints nothing**, and does nothing if Vigil is not running (≈10-15 ms per call).
 
 **Why `PostToolUse`?** When you approve a permission prompt, Claude Code fires *no* `UserPromptSubmit`, so a session that had sent a `Notification` would stay "waiting" while Claude works again, and with the default policy the Mac could go to sleep mid-task. The heartbeat flips a *waiting* session back to *working*. It also lets Vigil adopt a session it missed (for example if Vigil restarted mid-task; PID required). It never revives an *idle* session. Remove it by deleting the `PostToolUse` entry if you don't want it; everything else keeps working.
 
+**Hook versions.** When Vigil's hook set changes (version 2 added `SubagentStart`/`SubagentStop`), Vigil notices that the entries in `settings.json` are older than the app and shows **Update hooks** in Settings, in the setup checklist and in the self-test. Updating backs up `settings.json`, replaces only Vigil's own entries (whatever version they are) and leaves every other hook untouched, including hooks that share a group with Vigil's. Running it twice changes nothing. **Already-running Claude Code sessions must be restarted** to pick up the new hooks.
+
+**Subagents.** The main agent can end its turn (`Stop`) while subagents it started keep working. Vigil keeps a set of active subagents per session, keyed by `agent_id` (with `agent_type` and start time): `SubagentStart` adds one, `SubagentStop` removes it. A `SubagentStop` for an agent Vigil never saw start (for example Vigil launched mid-session) is ignored.
+
 **Rules**
-- The Mac may sleep only when **all** sessions are idle, waiting (default policy) or ended.
+- A session is **working** if its main agent got `UserPromptSubmit` without a `Stop` since, **or** it has at least one active subagent.
+- The Mac may sleep only when **all** sessions are idle by that definition, waiting (default policy) or ended.
+- `Stop` while subagents are still running only marks the main agent idle; no countdown starts. The countdown starts when the **last** `SubagentStop` arrives, and a `SubagentStart` during the countdown cancels it.
+- **Stuck-subagent guard**: a subagent with no `SubagentStop` for longer than the *stuck subagent limit* (default 2 h) is dropped with a warning in the log. `SessionEnd` or a dead Claude process clears all of that session's subagents.
 - After the last session goes idle, a **grace period** (default 30 s) starts. That is also the countdown you see ("Sleeping in 0:24") and the notification with **Cancel** / **Keep awake**. A new prompt during the countdown cancels it.
 - When it expires: `pmset -a disablesleep 0` is restored **first**, then `pmset sleepnow`. Always in that order (the executor is a single ordered queue).
 - Ctrl+C fires no `Stop`, so every 10 s Vigil checks each session's PID with `kill(pid, 0)` and drops dead ones. A "working" session with no events for longer than the max duration is dropped too.
@@ -70,7 +79,7 @@ A stuck `disablesleep 1` in a backpack is dangerous, so there are several indepe
 - **Restore on**: Quit, `SIGTERM`/`SIGINT`/`SIGHUP`, logout/shutdown, and at launch if `SleepDisabled = 1` without an active session. Every 10 s Vigil also re-checks and undoes a stuck value.
 - **Watchdog**: when `disablesleep 1` is set, a detached shell watches the app's PID and runs `sudo -n pmset -a disablesleep 0` if the app dies (crash or `kill -9`). Verified: restored ~0.6 s after `SIGKILL`.
 - **Max keep-awake** (default 8 h): restore and sleep.
-- **Battery guard** (default 15 %): on battery below the threshold, restore and sleep immediately, with a notification.
+- **Battery guard** (default 5 %, can be turned off): on battery below the threshold, restore normal sleep with a notification, and sleep at once if the lid is closed. With the lid open, macOS takes over sleep instead of Vigil forcing it.
 - **Thermal guard**: `ProcessInfo.thermalState` of `.serious`/`.critical` with the lid closed: restore and sleep immediately.
 
 ### Privileges: sudoers vs. a privileged helper
@@ -95,17 +104,21 @@ For a personal tool the sudoers rule is the simpler trade; if you distribute Vig
 
 ## Settings
 
-Launch at login, grace period (10 s to 5 min), maximum keep-awake (1 to 24 h), low-battery threshold, only-sleep-if-lid-closed, notification policy, install/remove hooks, install/remove sleep permission, Dry run, Run self-test, Open log.
+Launch at login, grace period (10 s to 5 min), maximum keep-awake (1 to 24 h), stuck subagent limit (30 min, 1, 2 or 4 h), low-battery threshold, only-sleep-if-lid-closed, notification policy, install/update/remove hooks, install/remove sleep permission, Dry run, Run self-test, Open log.
 
-**Dry run** goes through the whole flow (working → idle → countdown → restore → sleep) but only logs `would run: pmset …`, and never calls `pmset`. Use *Simulate a session* to watch it happen.
+**Dry run** goes through the whole flow (working → idle → countdown → restore → sleep) but only logs `would run: pmset …`, and never calls `pmset`. Use *Simulate a session* to watch it happen (the simulated session includes a subagent that outlives the main agent's `Stop`).
 
-Data lives in `~/Library/Application Support/Vigil/`: `hook.sh`, `vigil.sock`, `history.json` (last 50 sessions: project, start, duration, how it ended), `logs/vigil.log` (rotating, 1 MB × 3). Preferences are in `defaults read cz.krystof.vigil`.
+The popover shows a badge on a session row while subagents run (*alwayson · Working · 2 subagents*); hover it or click it to see their types (*Explore, code-reviewer*). When every main agent is done but subagents still run, the header reads *Subagents working · 0:12:40* instead of a countdown, and the menu bar icon stays in the working state.
+
+Data lives in `~/Library/Application Support/Vigil/`: `hook.sh`, `vigil.sock`, `history.json` (last 50 sessions: project, start, duration, how it ended, most subagents at once and total subagent time), `logs/vigil.log` (rotating, 1 MB × 3). Preferences are in `defaults read cz.krystof.vigil`.
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
 | Icon never turns to "working" | Popover ▸ *Run self-test*. `grep "hook " ~/Library/Application\ Support/Vigil/logs/vigil.log`. Are the hooks in `~/.claude/settings.json` (`grep Vigil ~/.claude/settings.json`)? Restart the Claude Code session. |
+| Mac slept while a subagent was running | That Claude Code session was started before the subagent hooks were installed. Settings ▸ *Update hooks* if it is offered, then **restart Claude Code** so the new hooks load. Check with `grep Subagent ~/Library/Application\ Support/Vigil/logs/vigil.log`. |
+| A session stays "working" long after its subagents finished | A `SubagentStop` got lost. The stuck-subagent guard drops it after the limit (Settings ▸ *Stuck subagent limit*); look for `dropped stuck subagent` in the log. |
 | "Couldn't change sleep settings" | The sudoers rule is missing: run `sudo -n -l` and look for the two `pmset` commands, or click *Install sleep permission*. |
 | `pmset -g \| grep SleepDisabled` shows 1 with Vigil not running | `sudo pmset -a disablesleep 0` (relaunching Vigil also fixes it). |
 | Hook commands fail in Claude Code | `hook.sh` missing? Vigil restores it at launch and every 10 s while running. Or click *Install hooks* again. |
@@ -130,13 +143,14 @@ It quits Vigil (which restores sleep), removes only Vigil's entries from `~/.cla
 
 ## Manual test checklist
 
-1. `./build.sh && open build/Vigil.app`, complete the checklist, **Run self-test**: all five checks green.
+1. `./build.sh && open build/Vigil.app`, complete the checklist, **Run self-test**: all six checks green.
 2. Start a long Claude Code task (for example ask it to run a 3-minute `sleep`). Icon turns to ⚡, header says "Claude is working".
 3. `pmset -g | grep SleepDisabled` → `1`. `pmset -g assertions | grep Vigil` → two assertions.
 4. **Close the lid** (on a hard surface, plugged in). Wait a minute, then open a screen-share/SSH or just check later that the task kept running and the Mac never slept.
 5. Let the task finish. Within the grace period a notification appears; after it, the Mac **sleeps by itself** (`pmset -g log | grep -i sleep`).
 6. Try **Cancel** (Mac stays awake, back to armed) and **Keep awake** (holds 1 h) on the countdown.
 7. Two Claude sessions at once: finish one, the Mac stays awake until the other is done.
+   - Subagents: ask Claude to start a background subagent (e.g. "run an Explore agent in the background") and end its turn: the row shows the subagent badge, the header says "Subagents working", and the countdown only starts once the subagent finishes.
 8. Press Ctrl+C in a session mid-task: within about 10 s the session disappears and the countdown starts.
 9. Start a task, then `kill -9 $(pgrep -x Vigil)`: `pmset -g | grep SleepDisabled` is back to `0` within a few seconds.
 10. Start a task, then Quit Vigil from the menu, and again with `kill $(pgrep -x Vigil)`: `SleepDisabled` returns to `0` immediately.
@@ -150,7 +164,7 @@ swift build                    # debug build (Vigil.app is assembled only by bui
 Vigil --snapshot <dir>         # render the popover to PNGs (light + dark), no permissions needed
 ```
 
-Layout: `Sources/VigilCore` (StateMachine, HookServer, PowerController, SettingsInstaller = `ClaudeSettingsMerger` + `HookInstaller` + `SudoersInstaller`, Notifier, BatteryThermalMonitor, Persistence, SelfTest, Logging), `Sources/Vigil` (AppKit shell + SwiftUI popover), `Tests/VigilTests` (70 tests: state machine incl. multi-session/grace/interrupt/cancel, settings.json merger incl. missing/invalid/idempotent/removal, PID liveness, socket + real `hook.sh` round trips, watchdog script, localization completeness).
+Layout: `Sources/VigilCore` (StateMachine, HookServer, PowerController, SettingsInstaller = `ClaudeSettingsMerger` + `HookInstaller` + `SudoersInstaller`, Notifier, BatteryThermalMonitor, Persistence, SelfTest, Logging), `Sources/Vigil` (AppKit shell + SwiftUI popover), `Tests/VigilTests` (97 tests: state machine incl. multi-session/grace/interrupt/cancel and subagents (Stop with active subagents, last SubagentStop, SubagentStart during countdown, unknown SubagentStop, stuck-subagent timeout), settings.json merger incl. missing/invalid/idempotent/removal and the v1 → v2 hook upgrade, PID liveness, socket + real `hook.sh` round trips, watchdog script, localization completeness).
 
 - **Tests** use Swift Testing. On a Command-Line-Tools-only machine the testing macro plugin is not on the default path; `build.sh --test` passes `-plugin-path` for you. By hand: `swift test -Xswiftc -plugin-path -Xswiftc "$(xcode-select -p)/usr/lib/swift/host/plugins/testing"`.
 - **Localization**: `Resources/Localizable.xcstrings` is the source of truth (Xcode-compatible). Code calls `L("English text")`. `build.sh` generates `en.lproj`/`cs.lproj` from it and **fails the build** if the code uses a string that is missing or has no Czech translation.

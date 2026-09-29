@@ -61,6 +61,29 @@ import Testing
         #expect(event.cwd == "/Users/me/my project")
     }
 
+    @Test func subagentEventsRunThroughTheInstalledCommandLine() throws {
+        // Runs the exact command string written to settings.json (with its version stamp) the way Claude Code does.
+        let home = makeTempDir("vigil-home"); defer { try? FileManager.default.removeItem(at: home) }
+        let paths = VigilPaths(home: home)
+        try HookInstaller(paths: paths).installScript()
+        let sock = socketPath()
+        let box = EventBox()
+        let server = HookServer(socketPath: sock) { box.add($0) }
+        try server.start(); defer { server.stop() }
+
+        for (i, kind) in [HookKind.subagentStart, .subagentStop].enumerated() {
+            let payload = #"{"session_id":"s-sub","cwd":"/tmp","hook_event_name":"\#(kind.rawValue)","agent_id":"ag-7","agent_type":"code-reviewer"}"#
+            let r = Shell.run("/bin/sh", ["-c", ClaudeSettingsMerger.command(for: kind)], stdin: payload,
+                              environment: ["HOME": home.path, "PATH": "/usr/bin:/bin", "VIGIL_SOCKET": sock], timeout: 5)
+            #expect(r.status == 0 && r.stdout.isEmpty && r.stderr.isEmpty)
+            #expect(box.waitForCount(i + 1))
+        }
+        let events = box.all
+        #expect(events.map(\.kind) == [.subagentStart, .subagentStop])
+        #expect(events.allSatisfy { $0.agentID == "ag-7" && $0.sessionID == "s-sub" })
+        #expect(events.first?.agentType == "code-reviewer")
+    }
+
     @Test func multilinePayloadStillArrivesAsOneEvent() throws {
         let dir = makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
         let sock = socketPath()

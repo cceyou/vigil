@@ -48,7 +48,11 @@ def main() -> int:
         with open(os.path.join(d, "Localizable.strings"), "w", encoding="utf-8") as f:
             f.write("/* Generated from Localizable.xcstrings by Scripts/gen_lproj.py. Do not edit. */\n")
             for key in sorted(strings):
-                value = key if lang == "en" else strings[key]["localizations"]["cs"]["stringUnit"]["value"]
+                # English is the key itself unless the catalog overrides it (used for Czech plural forms,
+                # e.g. "%d subagents (2-4)" -> "%d subagents").
+                value = strings[key].get("localizations", {}).get(lang, {}).get("stringUnit", {}).get("value")
+                if value is None:
+                    value = key
                 f.write(f'"{escape(key)}" = "{escape(value)}";\n')
     print(f"Localization: {len(strings)} strings, en + cs")
     return 0

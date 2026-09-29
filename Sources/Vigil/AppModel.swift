@@ -12,6 +12,8 @@ enum Tab: String, CaseIterable, Identifiable {
 struct SetupStatus: Equatable {
     var sudoers = false
     var hooks = false
+    /// Our hooks are in settings.json but from an older hook set (e.g. without the subagent hooks).
+    var hooksOutdated = false
     var notifications = false
     var loginItem = false
     var socket = false
@@ -37,6 +39,8 @@ final class AppModel {
     private(set) var message: String?
     private(set) var hooksJustInstalled = false
     private(set) var dryRunLog: [String] = []
+    /// Session rows whose subagent list is disclosed.
+    var expandedSessions: Set<String> = []
     var tab: Tab = .overview
 
     // MARK: internals
@@ -201,8 +205,9 @@ final class AppModel {
     }
 
     private func receive(_ event: HookEvent) {
-        guard event.kind != .selfTest else { return }
-        log.info("hook \(event.kind.rawValue) session=\(event.sessionID.prefix(8)) pid=\(event.pid.map(String.init) ?? "-")")
+        guard !SelfTest.isSelfTestEvent(event) else { return }
+        let agent = event.agentID.map { " agent=\(event.agentType ?? "?")/\($0.prefix(8))" } ?? ""
+        log.info("hook \(event.kind.rawValue) session=\(event.sessionID.prefix(8)) pid=\(event.pid.map(String.init) ?? "-")\(agent)")
         send(.hook(event))
     }
 
@@ -257,7 +262,38 @@ final class AppModel {
 
     /// How long the longest-running working session has been working.
     var workingElapsed: TimeInterval {
-        workingSessions.map { now.timeIntervalSince($0.stateSince) }.max() ?? 0
+        workingSessions.compactMap { $0.workingSince.map { now.timeIntervalSince($0) } }.max() ?? 0
+    }
+
+    var activeSubagentCount: Int { machine.sessions.reduce(0) { $0 + $1.subagents.count } }
+
+    /// Every main agent is done but subagents still run: the header shows that instead of a countdown.
+    var onlySubagentsWorking: Bool {
+        phase == .working && activeSubagentCount > 0 && !machine.sessions.contains { $0.state == .working }
+    }
+
+    var environment: VigilCore.Environment { machine.environment }
+
+    /// Set when Claude wants the Mac awake but a guard refuses (the case that used to look like "armed").
+    var pausedReason: GuardReason? {
+        guard enabled, phase == .armed, !workingSessions.isEmpty || keepAwakeRemaining != nil else { return nil }
+        return machine.blockedReason
+    }
+
+    var mood: Mood {
+        if pausedReason != nil { return .paused }
+        switch phase {
+        case .off: return .off
+        case .armed: return .armed
+        case .working: return .working
+        case .countdown: return .countdown
+        }
+    }
+
+    /// 1 at the start of the countdown, 0 when it expires.
+    var countdownProgress: Double {
+        guard let r = countdownRemaining, settings.config.graceSeconds > 0 else { return 1 }
+        return min(1, max(0, r / settings.config.graceSeconds))
     }
 
     var statusItemTitle: String? {
@@ -266,6 +302,7 @@ final class AppModel {
     }
 
     var iconName: String {
+        if pausedReason != nil { return "bolt.slash" }
         switch phase {
         case .off: return "moon.zzz"
         case .armed: return "eye"
@@ -328,9 +365,11 @@ final class AppModel {
         let notifier = self.notifier
         Task {
             let sudoers = await Self.background { SudoersInstaller.isInstalled() }
-            let hooks = HookInstaller(paths: paths).hooksInstalled && FileManager.default.isExecutableFile(atPath: paths.hookScript.path)
+            let status = HookInstaller(paths: paths).hookStatus()
+            let hooks = status == .current && FileManager.default.isExecutableFile(atPath: paths.hookScript.path)
             let notifications = await notifier.isAuthorized()
-            self.setup = SetupStatus(sudoers: sudoers, hooks: hooks, notifications: notifications,
+            self.setup = SetupStatus(sudoers: sudoers, hooks: hooks, hooksOutdated: status == .outdated,
+                                     notifications: notifications,
                                      loginItem: SMAppService.mainApp.status == .enabled,
                                      socket: HookServer.probe(socketPath: paths.socket.path))
             self.onChange?()
@@ -376,6 +415,15 @@ final class AppModel {
     func installHooks() {
         let paths = self.paths
         perform("hooks", success: L("Hooks installed. Restart running Claude Code sessions so they load the new hooks.")) {
+            try HookInstaller(paths: paths).installHooks()
+        }
+        hooksJustInstalled = true
+    }
+
+    /// Same merge as install: replaces only our entries (any version) and leaves everyone else's alone.
+    func updateHooks() {
+        let paths = self.paths
+        perform("hooks", success: L("Hooks updated. Restart running Claude Code sessions so they load the new hooks.")) {
             try HookInstaller(paths: paths).installHooks()
         }
         hooksJustInstalled = true
@@ -430,6 +478,7 @@ final class AppModel {
         switch action {
         case .installSudoers: installSudoers()
         case .installHooks: installHooks()
+        case .updateHooks: updateHooks()
         case .restartServer: startServer(); refreshSetup()
         case .requestNotifications: requestNotifications()
         }
@@ -447,10 +496,14 @@ final class AppModel {
     func previewSessions(phase: Phase) {
         var m = StateMachine(enabled: phase != .off, config: settings.config)
         let t = Date().addingTimeInterval(-754)
-        func hook(_ kind: HookKind, _ id: String, _ cwd: String) -> Event { .hook(HookEvent(kind: kind, sessionID: id, cwd: cwd)) }
+        func hook(_ kind: HookKind, _ id: String, _ cwd: String, agent: String? = nil, type: String? = nil) -> Event {
+            .hook(HookEvent(kind: kind, sessionID: id, cwd: cwd, agentID: agent, agentType: type))
+        }
         switch phase {
         case .working:
             _ = m.handle(hook(.userPromptSubmit, "a", "/Users/me/Projects/alwayson"), at: t)
+            _ = m.handle(hook(.subagentStart, "a", "/Users/me/Projects/alwayson", agent: "x1", type: "Explore"), at: t.addingTimeInterval(60))
+            _ = m.handle(hook(.subagentStart, "a", "/Users/me/Projects/alwayson", agent: "x2", type: "code-reviewer"), at: t.addingTimeInterval(90))
             _ = m.handle(hook(.userPromptSubmit, "b", "/Users/me/Projects/website"), at: t.addingTimeInterval(300))
             _ = m.handle(hook(.notification, "b", "/Users/me/Projects/website"), at: t.addingTimeInterval(500))
             _ = m.handle(hook(.userPromptSubmit, "c", "/Users/me/Projects/dotfiles"), at: t.addingTimeInterval(20))
@@ -467,18 +520,50 @@ final class AppModel {
         now = Date()
     }
 
+    /// Snapshot state: the main agent has finished, two subagents are still running.
+    func previewSubagentsOnly() {
+        var m = StateMachine(enabled: true, config: settings.config)
+        let t = Date().addingTimeInterval(-760)
+        let cwd = "/Users/me/Projects/rasinova-residence"
+        _ = m.handle(.hook(HookEvent(kind: .userPromptSubmit, sessionID: "a", cwd: cwd)), at: t.addingTimeInterval(-120))
+        _ = m.handle(.hook(HookEvent(kind: .subagentStart, sessionID: "a", cwd: cwd, agentID: "x1", agentType: "Explore")), at: t)
+        _ = m.handle(.hook(HookEvent(kind: .subagentStart, sessionID: "a", cwd: cwd, agentID: "x2", agentType: "code-reviewer")), at: t.addingTimeInterval(30))
+        _ = m.handle(.hook(HookEvent(kind: .stop, sessionID: "a", cwd: cwd)), at: t.addingTimeInterval(45))
+        machine = m
+        now = Date()
+    }
+
+    /// Snapshot state: Claude working, lid closed, battery under the threshold.
+    func previewPaused() {
+        var m = StateMachine(enabled: true, config: settings.config)
+        let t = Date().addingTimeInterval(-754)
+        _ = m.handle(.environment(VigilCore.Environment(lidClosed: true, onBattery: true, batteryPercent: 3)), at: t)
+        _ = m.handle(.hook(HookEvent(kind: .userPromptSubmit, sessionID: "a", cwd: "/Users/me/Projects/alwayson")), at: t)
+        machine = m
+        now = Date()
+    }
+
     // MARK: dry run
 
-    /// Feeds a fake working -> idle sequence through the real state machine (only useful with dry run on).
+    /// Feeds a fake session through the real state machine (only useful with dry run on): the main agent
+    /// stops while a subagent keeps working, so the countdown only starts when the subagent finishes.
     func simulateSession() {
         let id = "dry-run-\(UUID().uuidString.prefix(6))"
-        send(.hook(HookEvent(kind: .sessionStart, sessionID: id, cwd: "/dry-run/demo", pid: nil)))
-        send(.hook(HookEvent(kind: .userPromptSubmit, sessionID: id, cwd: "/dry-run/demo", pid: nil)))
+        let agent = "dry-run-agent-\(UUID().uuidString.prefix(6))"
+        func hook(_ kind: HookKind) -> Event {
+            .hook(HookEvent(kind: kind, sessionID: id, cwd: "/dry-run/demo", agentID: agent, agentType: "Explore"))
+        }
+        send(hook(.sessionStart))
+        send(hook(.userPromptSubmit))
         Task {
+            try? await Task.sleep(for: .seconds(2))
+            send(hook(.subagentStart))
+            try? await Task.sleep(for: .seconds(2))
+            send(hook(.stop))
             try? await Task.sleep(for: .seconds(4))
-            send(.hook(HookEvent(kind: .stop, sessionID: id, cwd: "/dry-run/demo", pid: nil)))
+            send(hook(.subagentStop))
             try? await Task.sleep(for: .seconds(1))
-            send(.hook(HookEvent(kind: .sessionEnd, sessionID: id, cwd: "/dry-run/demo", pid: nil)))
+            send(hook(.sessionEnd))
         }
     }
 }
@@ -489,5 +574,23 @@ enum Format {
         let s = Int(seconds.rounded(.down))
         let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+    }
+
+    /// "1 subagent", "3 subagents" (Czech: 1 subagent, 2-4 subagenti, 5+ subagentů).
+    static func subagents(_ n: Int) -> String {
+        if n == 1 { return L("1 subagent") }
+        if (2...4).contains(n) { return L("%d subagents (2-4)", n) }
+        return L("%d subagents", n)
+    }
+
+    /// "Explore ×2, code-reviewer", in start order.
+    static func agentTypes(_ agents: [Subagent]) -> String {
+        var order: [String] = []
+        var counts: [String: Int] = [:]
+        for a in agents {
+            if counts[a.type] == nil { order.append(a.type) }
+            counts[a.type, default: 0] += 1
+        }
+        return order.map { counts[$0]! > 1 ? "\($0) ×\(counts[$0]!)" : $0 }.joined(separator: ", ")
     }
 }

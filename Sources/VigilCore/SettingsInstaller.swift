@@ -104,5 +104,14 @@ public struct HookInstaller: Sendable {
         ClaudeSettingsMerger.installedEvents(in: try? readSettings())
     }
 
-    public var hooksInstalled: Bool { installedEvents() == Set(ClaudeSettingsMerger.events) }
+    public func hookStatus() -> ClaudeSettingsMerger.Status {
+        ClaudeSettingsMerger.status(in: try? readSettings())
+    }
+
+    public func missingEvents() -> [HookKind] {
+        ClaudeSettingsMerger.missingEvents(in: try? readSettings())
+    }
+
+    /// Every event registered, with the current hook-set version.
+    public var hooksInstalled: Bool { hookStatus() == .current }
 }

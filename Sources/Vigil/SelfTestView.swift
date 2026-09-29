@@ -10,6 +10,7 @@ struct SelfTestView: View {
         case .hooks: return L("Claude Code hooks")
         case .socket: return L("Hook socket")
         case .roundTrip: return L("Hook round trip")
+        case .subagents: return L("Subagent tracking")
         case .notifications: return L("Notifications")
         }
     }
@@ -18,6 +19,7 @@ struct SelfTestView: View {
         switch fix {
         case .installSudoers: return L("Install permission")
         case .installHooks: return L("Install hooks")
+        case .updateHooks: return L("Update hooks")
         case .restartServer: return L("Restart listener")
         case .requestNotifications: return L("Allow notifications")
         }
@@ -55,7 +57,7 @@ struct SelfTestView: View {
                                 Spacer(minLength: 6)
                                 if let fix = r.fix {
                                     ActionButton(title: fixLabel(fix), busy: fix == .installSudoers && model.busy.contains("sudoers")
-                                                 || fix == .installHooks && model.busy.contains("hooks"), prominent: true) {
+                                                 || (fix == .installHooks || fix == .updateHooks) && model.busy.contains("hooks"), prominent: true) {
                                         model.fix(fix)
                                     }
                                 }

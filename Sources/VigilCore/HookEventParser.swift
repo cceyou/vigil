@@ -14,6 +14,8 @@ public enum HookEventParser {
         var pid: Int32?
         if let n = object["pid"] as? Int, n > 1 { pid = Int32(truncatingIfNeeded: n) }
         else if let s = object["pid"] as? String, let n = Int32(s), n > 1 { pid = n }
-        return HookEvent(kind: kind, sessionID: sessionID, cwd: cwd, pid: pid)
+        let agentID = (payload["agent_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let agentType = payload["agent_type"] as? String
+        return HookEvent(kind: kind, sessionID: sessionID, cwd: cwd, pid: pid, agentID: agentID, agentType: agentType)
     }
 }

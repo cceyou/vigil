@@ -15,7 +15,9 @@ enum Snapshot {
         let shots: [Shot] = [
             Shot(name: "overview-working", tab: .overview) { m in m.preview(phase: .working) },
             Shot(name: "overview-countdown", tab: .overview) { m in m.preview(phase: .countdown) },
+            Shot(name: "overview-subagents", tab: .overview) { m in m.previewSubagentsOnly() },
             Shot(name: "overview-armed", tab: .overview) { m in m.preview(phase: .armed) },
+            Shot(name: "overview-paused", tab: .overview) { m in m.previewPaused() },
             Shot(name: "history", tab: .history) { m in m.preview(phase: .armed) },
             Shot(name: "settings", tab: .settings) { m in m.preview(phase: .armed) },
             Shot(name: "selftest", tab: .selfTest) { m in m.preview(phase: .armed) },
@@ -52,7 +54,8 @@ extension AppModel {
     /// Sample data for snapshots only.
     func loadPreviewData() {
         previewInject(history: [
-            SessionRecord(id: "1", project: "alwayson", startedAt: Date().addingTimeInterval(-3600), duration: 1834, reason: .ended),
+            SessionRecord(id: "1", project: "alwayson", startedAt: Date().addingTimeInterval(-3600), duration: 1834, reason: .ended,
+                          maxSubagents: 3, subagentTime: 2710),
             SessionRecord(id: "2", project: "website", startedAt: Date().addingTimeInterval(-9000), duration: 412, reason: .interrupted),
             SessionRecord(id: "3", project: "dotfiles", startedAt: Date().addingTimeInterval(-90000), duration: 28800, reason: .timedOut),
         ], setup: SetupStatus(sudoers: true, hooks: true, notifications: false, loginItem: false, socket: true),
@@ -61,6 +64,7 @@ extension AppModel {
             CheckResult(id: .hooks, passed: true, detail: "All hooks are in settings.json and hook.sh is installed", fix: nil),
             CheckResult(id: .socket, passed: true, detail: "The socket is listening", fix: nil),
             CheckResult(id: .roundTrip, passed: true, detail: "A fake hook event went through hook.sh to the app in 41 ms", fix: nil),
+            CheckResult(id: .subagents, passed: true, detail: "A fake SubagentStart and SubagentStop took a session from working to idle", fix: nil),
             CheckResult(id: .notifications, passed: false, detail: "Notifications are not authorized", fix: .requestNotifications),
         ])
     }

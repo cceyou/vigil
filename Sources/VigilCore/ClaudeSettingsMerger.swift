@@ -7,7 +7,22 @@ public enum ClaudeSettingsMerger {
 
     /// Events we register. PostToolUse is a heartbeat that lets a session resume "working" after a
     /// permission prompt was approved (Claude Code fires no UserPromptSubmit in that case).
-    public static let events: [HookKind] = [.sessionStart, .userPromptSubmit, .stop, .notification, .sessionEnd, .postToolUse]
+    /// SubagentStart/SubagentStop keep a session busy while subagents run after the main agent's Stop.
+    public static let events: [HookKind] = [.sessionStart, .userPromptSubmit, .stop, .notification, .sessionEnd, .postToolUse,
+                                            .subagentStart, .subagentStop]
+
+    /// Version of the hook set. Bump it whenever `events` or the command line changes, so an existing
+    /// install shows up as outdated. Entries without a stamp are version 1.
+    public static let version = 2
+    private static let versionFlag = "--vigil-hooks="
+
+    public enum Status: Equatable, Sendable {
+        /// None of our entries are present.
+        case missing
+        /// Some of our entries are present, but from an older hook set (or incomplete).
+        case outdated
+        case current
+    }
 
     public enum MergeError: Error, Equatable, CustomStringConvertible {
         case invalidJSON(String)
@@ -23,8 +38,16 @@ public enum ClaudeSettingsMerger {
         }
     }
 
+    /// The version stamp is a trailing argument: hook.sh only reads $1, and extra keys in the hook entry
+    /// itself could trip Claude Code's settings validation.
     public static func command(for kind: HookKind) -> String {
-        "\"$HOME/Library/Application Support/Vigil/hook.sh\" \(kind.rawValue)"
+        "\"$HOME/Library/Application Support/Vigil/hook.sh\" \(kind.rawValue) \(versionFlag)\(version)"
+    }
+
+    /// The stamp in one of our commands (1 if unstamped).
+    static func version(of command: String) -> Int {
+        guard let range = command.range(of: versionFlag) else { return 1 }
+        return Int(command[range.upperBound...].prefix { $0.isNumber }) ?? 1
     }
 
     // MARK: parse / serialize
@@ -119,17 +142,37 @@ public enum ClaudeSettingsMerger {
 
     // MARK: status
 
-    /// Events (of the ones we need) that are registered with our command.
+    /// Events (of the ones we need) that are registered with our command, of any version.
     public static func installedEvents(in data: Data?) -> Set<HookKind> {
-        guard let root = try? parse(data), let hooks = root["hooks"] as? [String: Any] else { return [] }
-        var found = Set<HookKind>()
+        Set(ourCommands(in: data).keys)
+    }
+
+    /// Current only when every event is registered with this version's stamp.
+    public static func status(in data: Data?) -> Status {
+        let found = ourCommands(in: data)
+        if found.isEmpty { return .missing }
+        let current = events.allSatisfy { kind in
+            found[kind].map { !$0.isEmpty && $0.allSatisfy { version(of: $0) >= version } } ?? false
+        }
+        return current ? .current : .outdated
+    }
+
+    /// Events we need that are not registered at all (for messages).
+    public static func missingEvents(in data: Data?) -> [HookKind] {
+        let found = ourCommands(in: data)
+        return events.filter { found[$0] == nil }
+    }
+
+    private static func ourCommands(in data: Data?) -> [HookKind: [String]] {
+        guard let root = try? parse(data), let hooks = root["hooks"] as? [String: Any] else { return [:] }
+        var found: [HookKind: [String]] = [:]
         for kind in events {
             guard let groups = hooks[kind.rawValue] as? [Any] else { continue }
-            let has = groups.contains { g in
-                guard let hs = (g as? [String: Any])?["hooks"] as? [Any] else { return false }
-                return hs.contains(where: isOurs)
+            let commands = groups.flatMap { g -> [String] in
+                guard let hs = (g as? [String: Any])?["hooks"] as? [Any] else { return [] }
+                return hs.filter(isOurs).compactMap { ($0 as? [String: Any])?["command"] as? String }
             }
-            if has { found.insert(kind) }
+            if !commands.isEmpty { found[kind] = commands }
         }
         return found
     }

@@ -28,9 +28,16 @@ struct SettingsView: View {
                 }.labelsHidden().frame(width: 84)
             }
             Divider().opacity(0.5)
-            SettingRow(title: L("Low battery threshold"), subtitle: L("On battery below this level Vigil restores sleep and sleeps at once.")) {
+            SettingRow(title: L("Stuck subagent limit"), subtitle: L("A subagent that never reports back is dropped after this long.")) {
+                Picker("", selection: config(\.stuckSubagentLimit)) {
+                    ForEach([0.5, 1, 2, 4].map { $0 * 3600 }, id: \.self) { Text(Durations.short($0)).tag($0) }
+                }.labelsHidden().frame(width: 84)
+            }
+            Divider().opacity(0.5)
+            SettingRow(title: L("Low battery threshold"), subtitle: L("On battery below this level Vigil stops keeping the Mac awake, and sleeps it if the lid is closed.")) {
                 Picker("", selection: config(\.lowBatteryThreshold)) {
-                    ForEach([5, 10, 15, 20, 25, 30, 40, 50], id: \.self) { Text("\($0) %").tag($0) }
+                    Text(L("Off")).tag(0)
+                    ForEach([3, 5, 10, 15, 20, 30], id: \.self) { Text("\($0) %").tag($0) }
                 }.labelsHidden().frame(width: 84)
             }
             Divider().opacity(0.5)
@@ -62,9 +69,12 @@ struct SettingsView: View {
             }
             Divider().opacity(0.5)
             SettingRow(title: L("Claude Code hooks"),
-                       subtitle: model.setup.hooks ? L("Present in ~/.claude/settings.json") : L("Not installed")) {
+                       subtitle: model.setup.hooks ? L("Present in ~/.claude/settings.json")
+                           : model.setup.hooksOutdated ? L("Out of date: the subagent hooks are missing") : L("Not installed")) {
                 if model.setup.hooks {
                     ActionButton(title: L("Remove hooks"), busy: model.busy.contains("hooks")) { model.removeHooks() }
+                } else if model.setup.hooksOutdated {
+                    ActionButton(title: L("Update hooks"), busy: model.busy.contains("hooks"), prominent: true) { model.updateHooks() }
                 } else {
                     ActionButton(title: L("Install"), busy: model.busy.contains("hooks"), prominent: true) { model.installHooks() }
                 }
@@ -74,7 +84,7 @@ struct SettingsView: View {
         }
 
         group(L("Diagnostics")) {
-            SettingRow(title: L("Self-test"), subtitle: L("Checks permission, hooks, socket, a fake hook event and notifications.")) {
+            SettingRow(title: L("Self-test"), subtitle: L("Checks permission, hooks, socket, fake hook and subagent events, and notifications.")) {
                 ActionButton(title: L("Run self-test"), busy: model.selfTestRunning) { model.runSelfTest() }
             }
             Divider().opacity(0.5)
@@ -103,7 +113,7 @@ struct SettingsView: View {
             Text("Vigil \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")")
                 .font(.system(size: 11)).foregroundStyle(.tertiary)
             Spacer()
-            Button(L("Quit Vigil")) { model.quit() }.controlSize(.small)
+            Button(L("Quit Vigil")) { model.quit() }.buttonStyle(SoftButtonStyle(tint: Mood.paused.tint)).frame(width: 110)
         }
     }
 

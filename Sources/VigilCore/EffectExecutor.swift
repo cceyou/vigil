@@ -67,6 +67,9 @@ public actor EffectExecutor {
                 notifier?.postGuard(reason)
             case .record(let record):
                 onHistory(history.append(record))
+            case .droppedStuckSubagent(let project, let agentID, let agentType, let age):
+                Log.shared.warning("dropped stuck subagent \(agentType) (\(agentID.prefix(8))) in \(project): "
+                                   + "no SubagentStop after \(Int(age / 60)) min")
             }
         }
     }

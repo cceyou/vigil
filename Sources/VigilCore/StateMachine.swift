@@ -18,19 +18,56 @@ public enum SessionEndReason: String, Codable, Equatable, Sendable {
     case timedOut
 }
 
+/// A subagent (Agent tool, background agent) between its SubagentStart and SubagentStop.
+public struct Subagent: Equatable, Identifiable, Sendable {
+    public var id: String
+    public var type: String
+    public var startedAt: Date
+
+    public init(id: String, type: String, startedAt: Date) {
+        self.id = id
+        self.type = type
+        self.startedAt = startedAt
+    }
+}
+
 public struct Session: Equatable, Identifiable, Sendable {
     public var id: String
     public var cwd: String?
     public var pid: Int32?
+    /// The main agent's state. Subagents are tracked separately and keep the session busy on their own.
     public var state: SessionState
     public var startedAt: Date
     public var lastEventAt: Date
     public var stateSince: Date
+    /// Active subagents in start order.
+    public var subagents: [Subagent] = []
+    /// Most subagents seen running at once (for the history).
+    public var maxSubagents = 0
+    /// Total run time of subagents that have already finished.
+    public var finishedSubagentTime: TimeInterval = 0
 
     public var projectName: String {
         guard let cwd, !cwd.isEmpty else { return "Claude Code" }
         let name = (cwd as NSString).lastPathComponent
         return name.isEmpty ? cwd : name
+    }
+
+    /// Working by the sleep rule: the main agent is working, or any subagent is still running.
+    public var isWorking: Bool { state == .working || !subagents.isEmpty }
+
+    /// The main agent has finished its turn but subagents keep the session busy.
+    public var onlySubagentsWorking: Bool { state != .working && !subagents.isEmpty }
+
+    /// Since when the session has been busy (nil when it is not working).
+    public var workingSince: Date? {
+        if state == .working { return stateSince }
+        return subagents.map(\.startedAt).min()
+    }
+
+    /// Finished plus still-running subagent time.
+    public func subagentTime(at now: Date) -> TimeInterval {
+        finishedSubagentTime + subagents.reduce(0) { $0 + max(0, now.timeIntervalSince($1.startedAt)) }
     }
 }
 
@@ -40,13 +77,32 @@ public struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     public var startedAt: Date
     public var duration: TimeInterval
     public var reason: SessionEndReason
+    /// Most subagents running at once during the session.
+    public var maxSubagents: Int
+    /// Summed run time of all subagents.
+    public var subagentTime: TimeInterval
 
-    public init(id: String, project: String, startedAt: Date, duration: TimeInterval, reason: SessionEndReason) {
+    public init(id: String, project: String, startedAt: Date, duration: TimeInterval, reason: SessionEndReason,
+                maxSubagents: Int = 0, subagentTime: TimeInterval = 0) {
         self.id = id
         self.project = project
         self.startedAt = startedAt
         self.duration = duration
         self.reason = reason
+        self.maxSubagents = maxSubagents
+        self.subagentTime = subagentTime
+    }
+
+    // History written before subagent tracking has no subagent fields.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        project = try c.decode(String.self, forKey: .project)
+        startedAt = try c.decode(Date.self, forKey: .startedAt)
+        duration = try c.decode(TimeInterval.self, forKey: .duration)
+        reason = try c.decode(SessionEndReason.self, forKey: .reason)
+        maxSubagents = try c.decodeIfPresent(Int.self, forKey: .maxSubagents) ?? 0
+        subagentTime = try c.decodeIfPresent(TimeInterval.self, forKey: .subagentTime) ?? 0
     }
 }
 
@@ -85,12 +141,28 @@ public struct Environment: Equatable, Sendable {
 public struct Config: Equatable, Codable, Sendable {
     public var graceSeconds: TimeInterval = 30
     public var maxKeepAwake: TimeInterval = 8 * 3600
-    public var lowBatteryThreshold: Int = 15
+    /// Percent. 0 turns the guard off.
+    public var lowBatteryThreshold: Int = 5
     public var sleepOnlyIfLidClosed: Bool = false
     public var notificationPolicy: NotificationPolicy = .treatAsIdle
     public var manualKeepAwake: TimeInterval = 3600
+    /// A subagent with no SubagentStop for this long is dropped (a lost hook must not pin the Mac awake).
+    public var stuckSubagentLimit: TimeInterval = 2 * 3600
 
     public init() {}
+
+    // Every key is optional so settings saved by an older build (missing newer keys) still load.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Config()
+        graceSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .graceSeconds) ?? d.graceSeconds
+        maxKeepAwake = try c.decodeIfPresent(TimeInterval.self, forKey: .maxKeepAwake) ?? d.maxKeepAwake
+        lowBatteryThreshold = try c.decodeIfPresent(Int.self, forKey: .lowBatteryThreshold) ?? d.lowBatteryThreshold
+        sleepOnlyIfLidClosed = try c.decodeIfPresent(Bool.self, forKey: .sleepOnlyIfLidClosed) ?? d.sleepOnlyIfLidClosed
+        notificationPolicy = try c.decodeIfPresent(NotificationPolicy.self, forKey: .notificationPolicy) ?? d.notificationPolicy
+        manualKeepAwake = try c.decodeIfPresent(TimeInterval.self, forKey: .manualKeepAwake) ?? d.manualKeepAwake
+        stuckSubagentLimit = try c.decodeIfPresent(TimeInterval.self, forKey: .stuckSubagentLimit) ?? d.stuckSubagentLimit
+    }
 }
 
 /// Why the app refuses to hold the Mac awake right now.
@@ -111,6 +183,10 @@ public enum HookKind: String, Codable, Equatable, Sendable {
     case sessionEnd = "SessionEnd"
     /// Heartbeat: a tool call finished, so Claude is working.
     case postToolUse = "PostToolUse"
+    /// A subagent (Agent tool, background agent) started; carries agent_id and agent_type.
+    case subagentStart = "SubagentStart"
+    /// A subagent finished; carries agent_id.
+    case subagentStop = "SubagentStop"
     /// Used by the self-test round trip; never reaches the state machine.
     case selfTest = "VigilSelfTest"
 }
@@ -120,12 +196,18 @@ public struct HookEvent: Equatable, Sendable {
     public var sessionID: String
     public var cwd: String?
     public var pid: Int32?
+    /// Subagent hooks only.
+    public var agentID: String?
+    public var agentType: String?
 
-    public init(kind: HookKind, sessionID: String, cwd: String? = nil, pid: Int32? = nil) {
+    public init(kind: HookKind, sessionID: String, cwd: String? = nil, pid: Int32? = nil,
+                agentID: String? = nil, agentType: String? = nil) {
         self.kind = kind
         self.sessionID = sessionID
         self.cwd = cwd
         self.pid = pid
+        self.agentID = agentID
+        self.agentType = agentType
     }
 }
 
@@ -154,6 +236,8 @@ public enum Effect: Equatable, Sendable {
     case dismissCountdown
     case notifyGuard(GuardReason)
     case record(SessionRecord)
+    /// A subagent hit the stuck-subagent limit and was dropped; the executor logs a warning.
+    case droppedStuckSubagent(project: String, agentID: String, agentType: String, age: TimeInterval)
 }
 
 // MARK: - State machine
@@ -181,10 +265,12 @@ public struct StateMachine: Equatable {
     /// The reason acquiring is currently blocked, if any (latch or environment guard).
     public var blockedReason: GuardReason? { latch ?? environmentGuard }
 
-    public var workingSessions: [Session] { sessions.filter { $0.state == .working } }
+    /// Sessions whose main agent or any subagent is working.
+    public var workingSessions: [Session] { sessions.filter(\.isWorking) }
 
     private var environmentGuard: GuardReason? {
-        if environment.onBattery, let pct = environment.batteryPercent, pct < config.lowBatteryThreshold {
+        if config.lowBatteryThreshold > 0, environment.onBattery, let pct = environment.batteryPercent,
+           pct < config.lowBatteryThreshold {
             return .lowBattery
         }
         if environment.lidClosed, environment.thermal.rawValue >= ThermalLevel.serious.rawValue {
@@ -194,6 +280,8 @@ public struct StateMachine: Equatable {
     }
 
     private func isBlocking(_ session: Session) -> Bool {
+        // Running subagents keep a session busy even after the main agent sent Stop (or is waiting on the user).
+        if !session.subagents.isEmpty { return true }
         switch session.state {
         case .working: return true
         case .waiting: return config.notificationPolicy == .keepAwake
@@ -309,21 +397,31 @@ public struct StateMachine: Equatable {
             }
             return
 
+        case .subagentStart:
+            // Without an agent_id a later SubagentStop could never be matched, so it is not tracked.
+            guard let agentID = hook.agentID, !agentID.isEmpty else { return }
+            let i = sessionIndex(for: hook, existing: index, now: now)
+            if !sessions[i].subagents.contains(where: { $0.id == agentID }) {
+                sessions[i].subagents.append(Subagent(id: agentID, type: Self.agentType(hook.agentType), startedAt: now))
+                sessions[i].maxSubagents = max(sessions[i].maxSubagents, sessions[i].subagents.count)
+            }
+            return
+
+        case .subagentStop:
+            // Unknown session or agent (Vigil started mid-session, or the agent was already dropped): ignore.
+            guard let index, let agentID = hook.agentID,
+                  let a = sessions[index].subagents.firstIndex(where: { $0.id == agentID }) else { return }
+            let agent = sessions[index].subagents.remove(at: a)
+            sessions[index].finishedSubagentTime += max(0, now.timeIntervalSince(agent.startedAt))
+            sessions[index].lastEventAt = now
+            if let pid = hook.pid { sessions[index].pid = pid }
+            return
+
         case .sessionStart, .userPromptSubmit, .stop, .notification:
             break
         }
 
-        let i: Int
-        if let index {
-            i = index
-        } else {
-            sessions.append(Session(id: hook.sessionID, cwd: hook.cwd, pid: hook.pid, state: .idle,
-                                    startedAt: now, lastEventAt: now, stateSince: now))
-            i = sessions.count - 1
-        }
-        sessions[i].lastEventAt = now
-        if let cwd = hook.cwd, !cwd.isEmpty { sessions[i].cwd = cwd }
-        if let pid = hook.pid { sessions[i].pid = pid }
+        let i = sessionIndex(for: hook, existing: index, now: now)
 
         let newState: SessionState?
         switch hook.kind {
@@ -340,11 +438,34 @@ public struct StateMachine: Equatable {
         if hook.kind == .userPromptSubmit, latch == .manualSleep { latch = nil }
     }
 
+    /// Index of the hook's session (created idle if new), with lastEventAt / cwd / pid refreshed.
+    private mutating func sessionIndex(for hook: HookEvent, existing index: Int?, now: Date) -> Int {
+        let i: Int
+        if let index {
+            i = index
+        } else {
+            sessions.append(Session(id: hook.sessionID, cwd: hook.cwd, pid: hook.pid, state: .idle,
+                                    startedAt: now, lastEventAt: now, stateSince: now))
+            i = sessions.count - 1
+        }
+        sessions[i].lastEventAt = now
+        if let cwd = hook.cwd, !cwd.isEmpty { sessions[i].cwd = cwd }
+        if let pid = hook.pid { sessions[i].pid = pid }
+        return i
+    }
+
+    private static func agentType(_ raw: String?) -> String {
+        guard let raw, !raw.isEmpty else { return "subagent" }
+        return raw
+    }
+
+    /// Removing a session (SessionEnd, dead PID, timeout) also clears all its subagents.
     @discardableResult
     private mutating func removeSession(at index: Int, reason: SessionEndReason, now: Date) -> SessionRecord {
         let s = sessions.remove(at: index)
         return SessionRecord(id: s.id, project: s.projectName, startedAt: s.startedAt,
-                             duration: max(0, now.timeIntervalSince(s.startedAt)), reason: reason)
+                             duration: max(0, now.timeIntervalSince(s.startedAt)), reason: reason,
+                             maxSubagents: s.maxSubagents, subagentTime: s.subagentTime(at: now))
     }
 
     // MARK: tick
@@ -357,6 +478,18 @@ public struct StateMachine: Equatable {
         for id in stale {
             if let idx = sessions.firstIndex(where: { $0.id == id }) {
                 fx.append(.record(removeSession(at: idx, reason: .timedOut, now: now)))
+            }
+        }
+
+        // Stuck-subagent guard: a subagent whose SubagentStop never came is dropped after the limit.
+        for i in sessions.indices {
+            let stuck = sessions[i].subagents.filter { now.timeIntervalSince($0.startedAt) > config.stuckSubagentLimit }
+            guard !stuck.isEmpty else { continue }
+            sessions[i].subagents.removeAll { a in stuck.contains { $0.id == a.id } }
+            for a in stuck {
+                let age = now.timeIntervalSince(a.startedAt)
+                sessions[i].finishedSubagentTime += age
+                fx.append(.droppedStuckSubagent(project: sessions[i].projectName, agentID: a.id, agentType: a.type, age: age))
             }
         }
 
@@ -386,7 +519,7 @@ public struct StateMachine: Equatable {
 
     // MARK: guards / latch
 
-    /// Release + sleep immediately and refuse to re-acquire until the condition clears.
+    /// Release (and sleep, see below) immediately and refuse to re-acquire until the condition clears.
     private mutating func trip(_ reason: GuardReason, fx: inout [Effect]) {
         if countdownDeadline != nil {
             countdownDeadline = nil
@@ -397,7 +530,10 @@ public struct StateMachine: Equatable {
         if awakeHeld { fx.append(.releaseAwake) }
         awakeHeld = false
         awakeSince = nil
-        fx.append(.sleepNow)
+        // Battery and heat guards protect a closed laptop. With the lid open someone is at the Mac,
+        // so hand sleep back to macOS instead of yanking the machine to sleep under them.
+        let environmental = reason == .lowBattery || reason == .thermal
+        if !environmental || environment.lidClosed { fx.append(.sleepNow) }
         if reason == .maxDuration || reason == .manualSleep { latch = reason }
     }
 

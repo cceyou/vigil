@@ -206,15 +206,37 @@ import Testing
     @Test func lowBatteryOnBatteryTripsImmediately() {
         var m = machine { $0.lowBatteryThreshold = 15 }
         _ = m.handle(hook(.userPromptSubmit), at: at(0))
-        let ok = m.handle(.environment(Environment(onBattery: true, batteryPercent: 15)), at: at(1))
+        let ok = m.handle(.environment(Environment(lidClosed: true, onBattery: true, batteryPercent: 15)), at: at(1))
         #expect(ok.isEmpty) // exactly at the threshold is not "below"
-        let fx = m.handle(.environment(Environment(onBattery: true, batteryPercent: 14)), at: at(2))
+        let fx = m.handle(.environment(Environment(lidClosed: true, onBattery: true, batteryPercent: 14)), at: at(2))
         #expect(fx == [.notifyGuard(.lowBattery), .releaseAwake, .sleepNow])
         #expect(m.phase == .armed)
         // While still low, a new prompt does not re-acquire...
         #expect(m.handle(hook(.userPromptSubmit, "b"), at: at(3)).isEmpty)
         // ...but plugging in does.
         #expect(m.handle(.environment(Environment(onBattery: false, batteryPercent: 14)), at: at(4)) == [.acquireAwake])
+    }
+
+    @Test func lowBatteryWithLidOpenReleasesButDoesNotForceSleep() {
+        var m = machine { $0.lowBatteryThreshold = 15 }
+        _ = m.handle(hook(.userPromptSubmit), at: at(0))
+        let fx = m.handle(.environment(Environment(lidClosed: false, onBattery: true, batteryPercent: 10)), at: at(1))
+        #expect(fx == [.notifyGuard(.lowBattery), .releaseAwake])
+        #expect(m.blockedReason == .lowBattery)
+    }
+
+    @Test func lowBatteryThresholdZeroDisablesGuard() {
+        var m = machine { $0.lowBatteryThreshold = 0 }
+        _ = m.handle(hook(.userPromptSubmit), at: at(0))
+        #expect(m.handle(.environment(Environment(lidClosed: true, onBattery: true, batteryPercent: 1)), at: at(1)).isEmpty)
+        #expect(m.awakeHeld)
+    }
+
+    @Test func defaultThresholdIsFivePercent() {
+        var m = machine()
+        _ = m.handle(hook(.userPromptSubmit), at: at(0))
+        #expect(m.handle(.environment(Environment(lidClosed: true, onBattery: true, batteryPercent: 11)), at: at(1)).isEmpty)
+        #expect(m.awakeHeld)
     }
 
     @Test func lowBatteryIgnoredOnAC() {

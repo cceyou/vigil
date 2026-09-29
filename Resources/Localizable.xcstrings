@@ -23,6 +23,34 @@
         }
       }
     },
+    "%d subagents": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d subagentů"
+          }
+        }
+      }
+    },
+    "%d subagents (2-4)": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d subagenti"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d subagents"
+          }
+        }
+      }
+    },
     "1 session working. Your Mac stays awake, even with the lid closed.": {
       "extractionState": "manual",
       "localizations": {
@@ -34,6 +62,17 @@
         }
       }
     },
+    "1 subagent": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 subagent"
+          }
+        }
+      }
+    },
     "A closed laptop in a bag overheats. Keep it on a flat surface, ideally plugged in.": {
       "extractionState": "manual",
       "localizations": {
@@ -41,6 +80,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Zavřený notebook v batohu se přehřívá. Nechte ho na rovné ploše, ideálně připojený k napájení."
+          }
+        }
+      }
+    },
+    "A fake SubagentStart and SubagentStop took a session from working to idle": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testovací SubagentStart a SubagentStop převedly relaci z práce do nečinnosti"
           }
         }
       }
@@ -67,6 +117,17 @@
         }
       }
     },
+    "A subagent that never reports back is dropped after this long.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subagent, který se po takové době neozve, se přestane sledovat."
+          }
+        }
+      }
+    },
     "Add hooks": {
       "extractionState": "manual",
       "localizations": {
@@ -85,6 +146,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Přidá hooky do ~/.claude/settings.json (nejdřív se zálohuje)."
+          }
+        }
+      }
+    },
+    "Adds the subagent hooks, so the Mac stays awake while subagents work. Other hooks are left alone.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přidá hooky pro subagenty, aby Mac zůstal vzhůru, dokud pracují. Ostatní hooky zůstanou beze změny."
           }
         }
       }
@@ -166,6 +238,17 @@
         }
       }
     },
+    "Battery %@ is below the %@ limit, so closing the lid sleeps the Mac. Plug in, or lower the limit in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Baterie %@ je pod limitem %@, takže zavřením víka Mac usne. Připojte nabíječku nebo snižte limit v Nastavení."
+          }
+        }
+      }
+    },
     "Battery is low": {
       "extractionState": "manual",
       "localizations": {
@@ -199,13 +282,24 @@
         }
       }
     },
-    "Checks permission, hooks, socket, a fake hook event and notifications.": {
+    "Change battery limit": {
       "extractionState": "manual",
       "localizations": {
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zkontroluje oprávnění, hooky, socket, testovací událost a oznámení."
+            "value": "Změnit limit baterie"
+          }
+        }
+      }
+    },
+    "Checks permission, hooks, socket, fake hook and subagent events, and notifications.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zkontroluje oprávnění, hooky, socket, testovací události hooku a subagentů a oznámení."
           }
         }
       }
@@ -239,6 +333,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hooky Claude Code"
+          }
+        }
+      }
+    },
+    "Claude Code hooks are out of date": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hooky Claude Code jsou zastaralé"
           }
         }
       }
@@ -452,13 +557,24 @@
         }
       }
     },
-    "How long to wait after Claude finishes before sleeping.": {
+    "Hooks updated. Restart running Claude Code sessions so they load the new hooks.": {
       "extractionState": "manual",
       "localizations": {
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jak dlouho čekat po dokončení práce Claude, než se Mac uspí."
+            "value": "Hooky aktualizovány. Restartujte běžící relace Claude Code, aby načetly nové hooky."
+          }
+        }
+      }
+    },
+    "Hot": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Horký"
           }
         }
       }
@@ -628,6 +744,39 @@
         }
       }
     },
+    "Let it cool down on a flat surface; Vigil resumes by itself.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nechte ho vychladnout na rovné ploše; Vigil pak pokračuje sám."
+          }
+        }
+      }
+    },
+    "Lid closed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Víko zavřené"
+          }
+        }
+      }
+    },
+    "Lid open": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Víko otevřené"
+          }
+        }
+      }
+    },
     "Log": {
       "extractionState": "manual",
       "localizations": {
@@ -760,13 +909,24 @@
         }
       }
     },
-    "On battery below this level Vigil restores sleep and sleeps at once.": {
+    "Off": {
       "extractionState": "manual",
       "localizations": {
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Na baterii pod touto úrovní Vigil obnoví spánek a Mac okamžitě uspí."
+            "value": "Vypnuto"
+          }
+        }
+      }
+    },
+    "On battery below this level Vigil stops keeping the Mac awake, and sleeps it if the lid is closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na baterii pod touto úrovní Vigil přestane držet Mac vzhůru a při zavřeném víku ho uspí."
           }
         }
       }
@@ -804,6 +964,17 @@
         }
       }
     },
+    "Out of date: the subagent hooks are missing": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zastaralé: chybí hooky pro subagenty"
+          }
+        }
+      }
+    },
     "Overview": {
       "extractionState": "manual",
       "localizations": {
@@ -815,6 +986,50 @@
         }
       }
     },
+    "Paused · Mac is too hot": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pozastaveno · Mac je příliš horký"
+          }
+        }
+      }
+    },
+    "Paused · battery low": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pozastaveno · slabá baterie"
+          }
+        }
+      }
+    },
+    "Paused · time limit reached": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pozastaveno · vypršel časový limit"
+          }
+        }
+      }
+    },
+    "Paused · you put the Mac to sleep": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pozastaveno · Mac jste uspali"
+          }
+        }
+      }
+    },
     "Permissions and hooks": {
       "extractionState": "manual",
       "localizations": {
@@ -822,6 +1037,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Oprávnění a hooky"
+          }
+        }
+      }
+    },
+    "Plugged in": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na nabíječce"
           }
         }
       }
@@ -888,6 +1114,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Restartovat naslouchání"
+          }
+        }
+      }
+    },
+    "Resumes once Claude is idle again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokračuje, jakmile Claude znovu dokončí práci."
+          }
+        }
+      }
+    },
+    "Resumes with the next prompt.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokračuje s dalším zadáním."
           }
         }
       }
@@ -1079,6 +1327,39 @@
         }
       }
     },
+    "Stuck subagent limit": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limit pro zaseknutého subagenta"
+          }
+        }
+      }
+    },
+    "Subagent tracking": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sledování subagentů"
+          }
+        }
+      }
+    },
+    "Subagents working · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subagenti pracují · %@"
+          }
+        }
+      }
+    },
     "The fake hook event did not arrive": {
       "extractionState": "manual",
       "localizations": {
@@ -1086,6 +1367,61 @@
           "stringUnit": {
             "state": "translated",
             "value": "Testovací událost nedorazila"
+          }
+        }
+      }
+    },
+    "The fake subagent events did not arrive": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testovací události subagenta nedorazily"
+          }
+        }
+      }
+    },
+    "The hooks are out of date (missing %@). Update them, then restart running Claude Code sessions.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hooky jsou zastaralé (chybí %@). Aktualizujte je a restartujte běžící relace Claude Code."
+          }
+        }
+      }
+    },
+    "The hooks are out of date. Update them, then restart running Claude Code sessions.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hooky jsou zastaralé. Aktualizujte je a restartujte běžící relace Claude Code."
+          }
+        }
+      }
+    },
+    "The main agent is done; still running: %@. Your Mac stays awake until they finish.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hlavní agent skončil, stále běží: %@. Mac zůstane vzhůru, dokud nedokončí práci."
+          }
+        }
+      }
+    },
+    "The session did not go from working to idle": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relace nepřešla z práce do nečinnosti"
           }
         }
       }
@@ -1130,6 +1466,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Zapnout"
+          }
+        }
+      }
+    },
+    "Up to %@ · %@ total": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Až %@ · celkem %@"
+          }
+        }
+      }
+    },
+    "Update hooks": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualizovat hooky"
           }
         }
       }
@@ -1306,6 +1664,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "hook.sh se chová špatně (kód %d, neprázdný výstup)"
+          }
+        }
+      }
+    },
+    "hook.sh misbehaved on subagent events": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hook.sh se u událostí subagenta choval chybně"
           }
         }
       }

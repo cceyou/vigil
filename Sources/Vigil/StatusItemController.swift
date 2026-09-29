@@ -58,7 +58,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         switch model.phase {
         case .off: return L("Vigil is off")
         case .armed: return L("Armed · waiting for Claude")
-        case .working: return L("Claude is working · %@", Format.clock(model.workingElapsed))
+        case .working:
+            if model.onlySubagentsWorking { return L("Subagents working · %@", Format.clock(model.workingElapsed)) }
+            return L("Claude is working · %@", Format.clock(model.workingElapsed))
         case .countdown: return L("Sleeping in %@", Format.clock(model.countdownRemaining ?? 0))
         }
     }
