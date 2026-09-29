@@ -52,7 +52,7 @@ public enum ClaudeSettingsMerger {
 
     // MARK: parse / serialize
 
-    private static func parse(_ data: Data?) throws -> [String: Any] {
+    static func parse(_ data: Data?) throws -> [String: Any] {
         guard let data, !data.isEmpty else { return [:] }
         if String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return [:] }
         do { try StrictJSON.validate(data) } catch {
@@ -66,7 +66,7 @@ public enum ClaudeSettingsMerger {
         return dict
     }
 
-    private static func serialize(_ dict: [String: Any]) throws -> Data {
+    static func serialize(_ dict: [String: Any]) throws -> Data {
         try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
 

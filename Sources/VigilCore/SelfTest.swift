@@ -1,12 +1,12 @@
 import Foundation
 
 public enum CheckID: String, CaseIterable, Identifiable, Sendable {
-    case sudoers, hooks, socket, roundTrip, subagents, notifications
+    case sudoers, hooks, socket, roundTrip, subagents, statusLine, notifications
     public var id: String { rawValue }
 }
 
 public enum FixAction: Equatable, Sendable {
-    case installSudoers, installHooks, updateHooks, restartServer, requestNotifications
+    case installSudoers, installHooks, updateHooks, restartServer, requestNotifications, installStatusLine
 }
 
 public struct CheckResult: Identifiable, Equatable, Sendable {
@@ -47,6 +47,12 @@ public final class SelfTestProbe: @unchecked Sendable {
             let working = sandbox.sessions.first { $0.id == event.sessionID }?.isWorking ?? false
             workingTrace[event.sessionID, default: []].append(working)
         }
+    }
+
+    /// Status line updates: only the self-test's own fake ones are recorded.
+    public func received(_ snapshot: StatusLineSnapshot) {
+        guard snapshot.sessionID.hasPrefix(SelfTest.sessionPrefix) else { return }
+        lock.withLock { _ = seen.insert(snapshot.sessionID) }
     }
 
     private func hasSeen(_ id: String) -> Bool { lock.withLock { seen.contains(id) } }
@@ -102,6 +108,7 @@ public struct SelfTest: Sendable {
         results.append(checkSocket())
         results.append(await checkRoundTrip())
         results.append(await checkSubagents())
+        results.append(await checkStatusLine())
         results.append(await checkNotifications())
         return results
     }
@@ -197,6 +204,43 @@ public struct SelfTest: Sendable {
         else if trace.isEmpty { detail = L("The fake subagent events did not arrive") }
         else { detail = L("The session did not go from working to idle") }
         return CheckResult(id: .subagents, passed: ok, detail: detail, fix: ok ? nil : .restartServer)
+    }
+
+    /// Wrapper installed and referenced from settings.json, the previous command chained, and a fake status line
+    /// JSON going through the real wrapper to the socket. VIGIL_STATUSLINE_SELFTEST keeps the wrapper from running
+    /// the user's own status line command with fake data.
+    private func checkStatusLine() async -> CheckResult {
+        let installer = StatusLineInstaller(paths: paths)
+        guard installer.isInstalled else {
+            return CheckResult(id: .statusLine, passed: false,
+                               detail: L("The status line wrapper is not installed, so Claude usage is not available"),
+                               fix: .installStatusLine)
+        }
+        guard installer.chainMatchesOriginal() else {
+            return CheckResult(id: .statusLine, passed: false,
+                               detail: L("Your previous status line command is not chained correctly"), fix: .installStatusLine)
+        }
+        let sessionID = "\(Self.sessionPrefix)\(UUID().uuidString)"
+        let payload = "{\"session_id\":\"\(sessionID)\",\"cwd\":\"/tmp\",\"model\":{\"display_name\":\"Self-test\"}}"
+        let script = paths.statusLineScript.path
+        let started = Date()
+        let result: ShellResult = await onBackground {
+            Shell.run("/bin/sh", [script], stdin: payload,
+                      environment: ["HOME": paths.home.path, "PATH": "/usr/bin:/bin", "VIGIL_SOCKET": paths.socket.path,
+                                    "VIGIL_STATUSLINE_SELFTEST": "1"], timeout: 5)
+        }
+        let arrived = await probe.wait(for: sessionID, timeout: 3)
+        let elapsed = Date().timeIntervalSince(started)
+        let clean = result.status == 0 && !result.stdout.isEmpty
+        let ok = arrived && clean
+        let chained = StatusLineMerger.chainCommand(of: installer.storedOriginal()) != nil
+        let detail: String
+        if ok {
+            detail = chained ? L("Your previous status line is chained, and a fake status line reached Vigil in %d ms", Int(elapsed * 1000))
+                             : L("Installed, and a fake status line reached Vigil in %d ms", Int(elapsed * 1000))
+        } else if !clean { detail = L("statusline.sh misbehaved (exit %d, no output)", Int(result.status)) }
+        else { detail = L("The fake status line did not arrive") }
+        return CheckResult(id: .statusLine, passed: ok, detail: detail, fix: ok ? nil : .restartServer)
     }
 
     private func checkNotifications() async -> CheckResult {

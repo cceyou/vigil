@@ -51,7 +51,9 @@ import Testing
     }
 
     @Test func settingsRoundTrip() {
-        let suite = UserDefaults(suiteName: "vigil-test-\(UUID().uuidString)")!
+        let name = "vigil-test-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        defer { suite.removePersistentDomain(forName: name) } // no leftover plist in ~/Library/Preferences
         let store = SettingsStore(defaults: suite)
         #expect(store.load() == AppSettings())
         var s = AppSettings()
@@ -63,7 +65,9 @@ import Testing
     }
 
     @Test func settingsMigrationMovesOldBatteryDefault() {
-        let suite = UserDefaults(suiteName: "vigil-test-\(UUID().uuidString)")!
+        let name = "vigil-test-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        defer { suite.removePersistentDomain(forName: name) } // no leftover plist in ~/Library/Preferences
         let store = SettingsStore(defaults: suite)
         // Saved by a build before migrations existed: no "revision" key, threshold at the old 15 % default.
         let old = #"{"enabled":true,"hasSeenOnboarding":true,"dryRun":false,"config":{"lowBatteryThreshold":15,"maxKeepAwake":28800,"sleepOnlyIfLidClosed":true,"notificationPolicy":"treatAsIdle","manualKeepAwake":3600,"graceSeconds":300}}"#

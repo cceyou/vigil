@@ -129,12 +129,16 @@ public struct Environment: Equatable, Sendable {
     public var onBattery: Bool
     public var batteryPercent: Int?
     public var thermal: ThermalLevel
+    /// On the charger and actually charging (not just "plugged in and full").
+    public var isCharging: Bool
 
-    public init(lidClosed: Bool = false, onBattery: Bool = false, batteryPercent: Int? = nil, thermal: ThermalLevel = .nominal) {
+    public init(lidClosed: Bool = false, onBattery: Bool = false, batteryPercent: Int? = nil, thermal: ThermalLevel = .nominal,
+                isCharging: Bool = false) {
         self.lidClosed = lidClosed
         self.onBattery = onBattery
         self.batteryPercent = batteryPercent
         self.thermal = thermal
+        self.isCharging = isCharging
     }
 }
 

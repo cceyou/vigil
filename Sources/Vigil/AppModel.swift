@@ -4,9 +4,31 @@ import ServiceManagement
 import SwiftUI
 import VigilCore
 
-enum Tab: String, CaseIterable, Identifiable {
-    case overview, history, settings, selfTest
-    var id: String { rawValue }
+/// The small windows opened from the popover's "…" menu.
+enum AuxWindow: String, CaseIterable {
+    case history, settings, selfTest
+}
+
+/// What the island at the top of the popover (and the menu bar icon) shows, by priority.
+enum IslandState: Equatable {
+    case countdown(TimeInterval)
+    case working(TimeInterval)
+    case waiting
+    case idle
+    case off
+    /// Claude wants the Mac awake but a guard (battery, heat, time limit, manual sleep) refuses.
+    case paused(GuardReason)
+
+    var kind: String {
+        switch self {
+        case .countdown: return "countdown"
+        case .working: return "working"
+        case .waiting: return "waiting"
+        case .idle: return "idle"
+        case .off: return "off"
+        case .paused: return "paused"
+        }
+    }
 }
 
 struct SetupStatus: Equatable {
@@ -17,8 +39,11 @@ struct SetupStatus: Equatable {
     var notifications = false
     var loginItem = false
     var socket = false
+    /// statusline.sh installed and referenced from settings.json (Claude usage data).
+    var statusLine = false
 
-    var checklistComplete: Bool { sudoers && hooks && notifications && loginItem }
+    var checklistComplete: Bool { sudoers && hooks && notifications && loginItem && statusLine }
+    var doneCount: Int { [sudoers, hooks, notifications, loginItem, statusLine].filter { $0 }.count }
 }
 
 /// Owns the state machine and every side-effecting component. All mutation happens on the main actor;
@@ -39,14 +64,15 @@ final class AppModel {
     private(set) var message: String?
     private(set) var hooksJustInstalled = false
     private(set) var dryRunLog: [String] = []
-    /// Session rows whose subagent list is disclosed.
-    var expandedSessions: Set<String> = []
-    var tab: Tab = .overview
+    private(set) var usage: UsageState
+    /// Index of the working-session page shown in the popover.
+    var sessionPage: String?
 
     // MARK: internals
     @ObservationIgnored let paths: VigilPaths
     @ObservationIgnored private let store = SettingsStore()
     @ObservationIgnored private let historyStore: HistoryStore
+    @ObservationIgnored private let usageStore: UsageStore
     @ObservationIgnored private let realPower: SystemPowerController
     @ObservationIgnored private let dryPower = DryRunPowerController()
     @ObservationIgnored private let notifier = Notifier()
@@ -59,6 +85,9 @@ final class AppModel {
     @ObservationIgnored private var tickCount = 0
     @ObservationIgnored private var signalSources: [DispatchSourceSignal] = []
     @ObservationIgnored var onChange: (() -> Void)?
+    @ObservationIgnored var onOpenWindow: ((AuxWindow) -> Void)?
+    /// Settings that the notch / hotkey controllers care about changed.
+    @ObservationIgnored var onUISettingsChange: (() -> Void)?
     @ObservationIgnored private let log = Log.shared
 
     init(paths: VigilPaths = .standard) {
@@ -68,6 +97,8 @@ final class AppModel {
         self.machine = StateMachine(enabled: loaded.enabled, config: loaded.config)
         self.historyStore = HistoryStore(url: paths.history)
         self.history = historyStore.load()
+        self.usageStore = UsageStore(url: paths.usage)
+        self.usage = usageStore.load()
         self.realPower = SystemPowerController(paths: paths)
     }
 
@@ -119,6 +150,7 @@ final class AppModel {
 
         // Keep hook.sh current, and put it back if it vanished while the hooks are still in settings.json.
         healHookScript(alwaysRewrite: true)
+        healStatusLineScript(alwaysRewrite: true)
         startServer()
         installSafetyNets()
 
@@ -146,7 +178,10 @@ final class AppModel {
     private func startServer() {
         server?.stop()
         let probe = self.probe
-        let s = HookServer(socketPath: paths.socket.path) { [weak self] event in
+        let s = HookServer(socketPath: paths.socket.path, onStatusLine: { [weak self] snapshot in
+            probe.received(snapshot)
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.receive(snapshot) } }
+        }) { [weak self] event in
             probe.received(event)
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.receive(event) } }
         }
@@ -211,9 +246,33 @@ final class AppModel {
         send(.hook(event))
     }
 
+    /// A status line update from statusline.sh (self-test ones only go to the probe).
+    private func receive(_ snapshot: StatusLineSnapshot) {
+        guard !snapshot.sessionID.hasPrefix(SelfTest.sessionPrefix) else { return }
+        let hadLimits = usage.hasRateLimits
+        let alerts = usage.apply(snapshot, at: Date())
+        usageStore.save(usage)
+        if !hadLimits && usage.hasRateLimits { log.info("usage: first rate_limits received") }
+        post(alerts)
+    }
+
+    private func post(_ alerts: [UsageAlert]) {
+        for alert in alerts {
+            log.info("usage alert: \(alert)")
+            guard settings.ui.usageNotifications else { continue }
+            let resetsAt: Date? = {
+                if case .threshold(let kind, _) = alert { return usage.window(kind)?.resetsAt }
+                return nil
+            }()
+            notifier.postUsage(alert, resetsAt: resetsAt)
+        }
+    }
+
     private func tick() {
         tickCount += 1
         send(.tick)
+        let rolled = usage.rollover(at: Date())
+        if !rolled.isEmpty { usageStore.save(usage); post(rolled) }
         if tickCount % 10 == 0 { maintenance() }
         if settings.dryRun { dryRunLog = Array(dryPower.recorded.suffix(6)) }
     }
@@ -228,6 +287,21 @@ final class AppModel {
         if !settings.dryRun { jobs?.yield(.reconcile) }
         if server?.isRunning != true { startServer() }
         healHookScript(alwaysRewrite: false)
+        healStatusLineScript(alwaysRewrite: false)
+    }
+
+    /// settings.json points at statusline.sh; if it is gone Claude Code shows no status line. Restore it.
+    private func healStatusLineScript(alwaysRewrite: Bool) {
+        let present = FileManager.default.isExecutableFile(atPath: paths.statusLineScript.path)
+        if present && !alwaysRewrite { return }
+        let installer = StatusLineInstaller(paths: paths)
+        guard installer.status() == .installed else { return }
+        do {
+            try installer.installScript()
+            if !present { log.warning("statusline.sh was missing; restored it") }
+        } catch {
+            log.error("could not restore statusline.sh: \(error)")
+        }
     }
 
     /// settings.json points at hook.sh; if the file is gone every Claude Code hook would fail. Restore it.
@@ -280,15 +354,33 @@ final class AppModel {
         return machine.blockedReason
     }
 
-    var mood: Mood {
-        if pausedReason != nil { return .paused }
+    var accent: Color { Theme.accent(settings.ui.accent) }
+
+    /// Sessions waiting for the user (a permission prompt or a question), most recent first.
+    var waitingSessions: [Session] {
+        machine.sessions.filter { $0.state == .waiting && $0.subagents.isEmpty }.sorted { $0.lastEventAt > $1.lastEventAt }
+    }
+
+    /// Working sessions for the paged card stack, most recently active first.
+    var workingByActivity: [Session] { workingSessions.sorted { $0.lastEventAt > $1.lastEventAt } }
+
+    /// The session the main card shows when at most one is working: the most recently active one.
+    var primarySession: Session? {
+        workingByActivity.first ?? machine.sessions.max { $0.lastEventAt < $1.lastEventAt }
+    }
+
+    var island: IslandState {
+        if let reason = pausedReason { return .paused(reason) }
         switch phase {
         case .off: return .off
-        case .armed: return .armed
-        case .working: return .working
-        case .countdown: return .countdown
+        case .countdown: return .countdown(countdownRemaining ?? 0)
+        case .working: return .working(workingSessions.isEmpty ? awakeElapsed : workingElapsed)
+        case .armed: return waitingSessions.isEmpty ? .idle : .waiting
         }
     }
+
+    /// How long the Mac has been held awake (the "keep awake 1 h" case has no working session).
+    var awakeElapsed: TimeInterval { machine.awakeSince.map { now.timeIntervalSince($0) } ?? 0 }
 
     /// 1 at the start of the countdown, 0 when it expires.
     var countdownProgress: Double {
@@ -296,18 +388,81 @@ final class AppModel {
         return min(1, max(0, r / settings.config.graceSeconds))
     }
 
+    /// Progress toward sleep for the track: nil means indeterminate (Claude works, no timer running).
+    var sleepProgress: Double? {
+        if phase == .countdown { return 1 - countdownProgress }
+        if let r = keepAwakeRemaining, settings.config.manualKeepAwake > 0 {
+            return min(1, max(0, 1 - r / settings.config.manualKeepAwake))
+        }
+        return phase == .working ? nil : 0
+    }
+
+    /// How much longer Vigil keeps the Mac awake at most: the manual hour, or the max keep-awake failsafe.
+    var awakeRemaining: TimeInterval? {
+        guard machine.awakeHeld else { return nil }
+        let failsafe = machine.awakeSince.map { max(0, settings.config.maxKeepAwake - now.timeIntervalSince($0)) }
+        return [keepAwakeRemaining, failsafe].compactMap { $0 }.min()
+    }
+
     var statusItemTitle: String? {
         if phase == .countdown, let r = countdownRemaining { return " " + Format.clock(r) }
         return nil
     }
 
+    /// Menu bar icon: mirrors the island (bolt / moon / exclamation mark).
     var iconName: String {
-        if pausedReason != nil { return "bolt.slash" }
-        switch phase {
-        case .off: return "moon.zzz"
-        case .armed: return "eye"
+        switch island {
         case .working: return "bolt.fill"
-        case .countdown: return "timer"
+        case .countdown: return "moon.fill"
+        case .waiting: return "exclamationmark"
+        case .idle: return "bolt"
+        case .off: return "moon.zzz"
+        case .paused: return "bolt.slash"
+        }
+    }
+
+    // MARK: usage
+
+    /// Claude usage as the card should show it right now (resets applied).
+    func usageWindow(_ kind: UsageWindowKind) -> EffectiveWindow? { usage.effective(kind, at: now) }
+
+    /// Up to three sessions for the usage card: running sessions first, then recent status lines.
+    var usageSessions: [UsageCardSession] {
+        var list: [UsageCardSession] = []
+        var seen = Set<String>()
+        for s in machine.sessions.sorted(by: { $0.lastEventAt > $1.lastEventAt }) {
+            let info = usage.sessions[s.id]
+            list.append(UsageCardSession(id: s.id, project: s.projectName, model: info?.model,
+                                         contextPercent: info?.contextPercent, working: s.isWorking))
+            seen.insert(s.id)
+        }
+        for (id, info) in usage.recentSessions(at: now, within: 600) where !seen.contains(id) {
+            list.append(UsageCardSession(id: id, project: info.projectName, model: info.model,
+                                         contextPercent: info.contextPercent, working: false))
+        }
+        return Array(list.prefix(3))
+    }
+
+    // MARK: windows and apps
+
+    func open(_ window: AuxWindow) { onOpenWindow?(window) }
+
+    /// Brings the terminal app that runs `session` to the front: walks up from the Claude PID to the first process
+    /// that is a regular app. Falls back to the Claude app.
+    func openApp(for session: Session) {
+        if let pid = session.pid {
+            for p in ProcessTree.ancestry(of: pid) {
+                if let app = NSRunningApplication(processIdentifier: p), app.activationPolicy == .regular {
+                    log.info("open: activating \(app.localizedName ?? "?") (pid \(p)) for \(session.projectName)")
+                    app.activate()
+                    return
+                }
+            }
+        }
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") {
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        } else {
+            message = L("Could not find the app running this session.")
         }
     }
 
@@ -336,6 +491,7 @@ final class AppModel {
             jobs?.yield(.usePower(settings.dryRun ? dryPower : realPower))
             log.info("dry run \(settings.dryRun ? "on" : "off")")
         }
+        if settings.ui != old.ui { onUISettingsChange?() }
         onChange?()
     }
 
@@ -371,7 +527,8 @@ final class AppModel {
             self.setup = SetupStatus(sudoers: sudoers, hooks: hooks, hooksOutdated: status == .outdated,
                                      notifications: notifications,
                                      loginItem: SMAppService.mainApp.status == .enabled,
-                                     socket: HookServer.probe(socketPath: paths.socket.path))
+                                     socket: HookServer.probe(socketPath: paths.socket.path),
+                                     statusLine: StatusLineInstaller(paths: paths).isInstalled)
             self.onChange?()
         }
     }
@@ -435,6 +592,20 @@ final class AppModel {
         hooksJustInstalled = false
     }
 
+    func installStatusLine() {
+        let paths = self.paths
+        perform("statusLine", success: L("Status line installed. Claude usage appears after the next response in Claude Code.")) {
+            try StatusLineInstaller(paths: paths).install()
+        }
+    }
+
+    func removeStatusLine() {
+        let paths = self.paths
+        perform("statusLine", success: L("Status line removed. Your previous status line is back.")) {
+            try StatusLineInstaller(paths: paths).remove()
+        }
+    }
+
     func requestNotifications() {
         Task {
             let granted = await notifier.requestAuthorization()
@@ -458,7 +629,7 @@ final class AppModel {
     func runSelfTest(showing: Bool = true) {
         guard !selfTestRunning else { return }
         selfTestRunning = true
-        if showing { tab = .selfTest }
+        if showing { open(.selfTest) }
         let test = SelfTest(paths: paths, probe: probe,
                             isNotificationAuthorized: { [notifier] in await notifier.isAuthorized() },
                             awakeHeld: machine.awakeHeld)
@@ -481,16 +652,28 @@ final class AppModel {
         case .updateHooks: updateHooks()
         case .restartServer: startServer(); refreshSetup()
         case .requestNotifications: requestNotifications()
+        case .installStatusLine: installStatusLine()
         }
     }
 
     // MARK: preview (snapshots)
 
-    func previewInject(history: [SessionRecord], setup: SetupStatus, selfTest: [CheckResult]) {
+    func previewInject(history: [SessionRecord], setup: SetupStatus, selfTest: [CheckResult], usage: UsageState? = nil) {
         self.history = history
         self.setup = setup
         self.selfTestResults = selfTest
+        if let usage { self.usage = usage }
     }
+
+    /// Snapshots only: replaces the state machine with one built by `build`.
+    func previewMachine(_ build: (inout StateMachine) -> Void) {
+        var m = StateMachine(enabled: true, config: settings.config)
+        build(&m)
+        machine = m
+        now = Date()
+    }
+
+    func previewSettings(_ mutate: (inout AppSettings) -> Void) { mutate(&settings) }
 
     /// Builds a fresh state machine in the requested phase (snapshots only; no side effects are executed).
     func previewSessions(phase: Phase) {
@@ -576,11 +759,18 @@ enum Format {
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
     }
 
-    /// "1 subagent", "3 subagents" (Czech: 1 subagent, 2-4 subagenti, 5+ subagentů).
+    /// "1 subagent", "3 subagents" (Czech: 1 subagent, 2-4 subagenti, 0 and 5+ subagentů).
     static func subagents(_ n: Int) -> String {
-        if n == 1 { return L("1 subagent") }
-        if (2...4).contains(n) { return L("%d subagents (2-4)", n) }
-        return L("%d subagents", n)
+        switch PluralCategory.czech(n) {
+        case .one: return L("1 subagent")
+        case .few: return L("%d subagents (2-4)", n)
+        case .many: return L("%d subagents", n)
+        }
+    }
+
+    /// "Main agent + 2 subagents"; just "Main agent" without subagents.
+    static func agents(_ subagentCount: Int) -> String {
+        subagentCount == 0 ? L("Main agent") : L("Main agent + %@", subagents(subagentCount))
     }
 
     /// "Explore ×2, code-reviewer", in start order.

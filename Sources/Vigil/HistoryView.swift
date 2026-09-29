@@ -5,30 +5,32 @@ struct HistoryView: View {
     let model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 SectionTitle(text: L("Last %d sessions", 50))
                 Spacer()
                 if !model.history.isEmpty {
-                    Button(L("Clear")) { model.clearHistory() }
-                        .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Button(L("Clear")) { model.clearHistory() }.buttonStyle(PillButtonStyle())
                 }
             }
-            Card(padding: 4) {
+            Card(padding: 6) {
                 if model.history.isEmpty {
                     HStack(spacing: 10) {
                         Image(systemName: "clock.arrow.circlepath").foregroundStyle(.tertiary)
-                        Text(L("Finished sessions appear here.")).font(.system(size: 12)).foregroundStyle(.secondary)
+                        Text(L("Finished sessions appear here.")).font(.system(size: 13)).foregroundStyle(.secondary)
                         Spacer()
                     }
-                    .padding(10)
+                    .padding(14)
                 } else {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(model.history.enumerated()), id: \.element.id) { index, record in
-                            HStack(spacing: 10) {
-                                Image(systemName: icon(record.reason)).foregroundStyle(tint(record.reason)).frame(width: 18)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(record.project).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                            HStack(spacing: 12) {
+                                Image(systemName: icon(record.reason))
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(record.reason == .ended ? model.accent : .secondary)
+                                    .frame(width: 20)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(record.project).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                                     Text(record.startedAt, format: .dateTime.day().month().hour().minute())
                                         .font(.system(size: 11)).foregroundStyle(.secondary)
                                     if record.maxSubagents > 0 {
@@ -38,13 +40,13 @@ struct HistoryView: View {
                                     }
                                 }
                                 Spacer()
-                                VStack(alignment: .trailing, spacing: 1) {
-                                    Text(Format.clock(record.duration)).font(.system(size: 12, weight: .medium)).monospacedDigit()
-                                    Text(label(record.reason)).font(.system(size: 11)).foregroundStyle(tint(record.reason))
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text(Format.clock(record.duration)).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                                    Text(label(record.reason)).font(.system(size: 11)).foregroundStyle(.secondary)
                                 }
                             }
-                            .padding(10)
-                            if index < model.history.count - 1 { Divider().opacity(0.5) }
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            if index < model.history.count - 1 { RowDivider().padding(.leading, 44) }
                         }
                     }
                 }
@@ -64,13 +66,6 @@ struct HistoryView: View {
         case .ended: return "checkmark.circle.fill"
         case .interrupted: return "bolt.slash.fill"
         case .timedOut: return "hourglass"
-        }
-    }
-    private func tint(_ r: SessionEndReason) -> Color {
-        switch r {
-        case .ended: return .green
-        case .interrupted: return .orange
-        case .timedOut: return .red
         }
     }
 }

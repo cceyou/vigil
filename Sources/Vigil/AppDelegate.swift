@@ -5,6 +5,8 @@ import VigilCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel!
     private var statusController: StatusItemController!
+    private var windows: AuxWindowManager!
+    private var notch: EdgeNotchController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
@@ -13,6 +15,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         model = AppModel()
         statusController = StatusItemController(model: model)
+        windows = AuxWindowManager(model: model)
+        notch = EdgeNotchController(model: model)
+        model.onChange = { [weak self] in
+            self?.statusController.refresh()
+            self?.notch.refresh()
+        }
+        model.onOpenWindow = { [weak self] kind in
+            self?.statusController.closePopover()
+            self?.windows.show(kind)
+        }
+        model.onUISettingsChange = { [weak self] in self?.notch.apply() }
+        notch.apply()
         model.start()
         statusController.refresh()
 

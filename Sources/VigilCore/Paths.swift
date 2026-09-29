@@ -15,6 +15,14 @@ public struct VigilPaths: Sendable {
     public var socket: URL { supportDir.appendingPathComponent("vigil.sock") }
     public var hookScript: URL { supportDir.appendingPathComponent("hook.sh") }
     public var history: URL { supportDir.appendingPathComponent("history.json") }
+    /// Status line wrapper (forwards Claude Code's status line JSON to the socket).
+    public var statusLineScript: URL { supportDir.appendingPathComponent("statusline.sh") }
+    /// The user's statusLine object from settings.json before Vigil replaced it (verbatim JSON, or `null`).
+    public var statusLineOriginal: URL { supportDir.appendingPathComponent("statusline.original.json") }
+    /// The original status line command, run by the wrapper with the same stdin (empty: none).
+    public var statusLineChain: URL { supportDir.appendingPathComponent("statusline.chain") }
+    /// Last known Claude usage (rate limits, per-session model and context).
+    public var usage: URL { supportDir.appendingPathComponent("usage.json") }
     public var logDir: URL { supportDir.appendingPathComponent("logs", isDirectory: true) }
     public var logFile: URL { logDir.appendingPathComponent("vigil.log") }
     /// Exists only while disablesleep=1 is in force; the watchdog restores when it sees it after the app died.

@@ -95,6 +95,28 @@ public final class Notifier: NSObject, UNUserNotificationCenterDelegate, @unchec
         center.add(UNNotificationRequest(identifier: "vigil.guard.\(reason.rawValue)", content: content, trigger: nil))
     }
 
+    /// Claude usage crossed a threshold or a window reset.
+    public func postUsage(_ alert: UsageAlert, resetsAt: Date?) {
+        guard let center else { return }
+        let content = UNMutableNotificationContent()
+        let id: String
+        switch alert {
+        case .threshold(let kind, let percent):
+            content.title = kind == .fiveHour ? L("Claude usage: %@ of the session limit", "\(percent) %")
+                                              : L("Claude usage: %@ of the weekly limit", "\(percent) %")
+            if let resetsAt {
+                content.body = L("Resets at %@.", resetsAt.formatted(date: kind == .fiveHour ? .omitted : .abbreviated, time: .shortened))
+            }
+            id = "vigil.usage.\(kind.rawValue).\(percent)"
+        case .reset(let kind):
+            content.title = L("Limit reset — you can continue")
+            content.body = kind == .fiveHour ? L("The 5-hour session window has reset.") : L("The weekly window has reset.")
+            id = "vigil.usage.\(kind.rawValue).reset"
+        }
+        content.sound = .default
+        center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
+    }
+
     // MARK: UNUserNotificationCenterDelegate
 
     public func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async

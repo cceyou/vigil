@@ -37,7 +37,7 @@ public struct HookInstaller: Sendable {
 
     // MARK: settings.json
 
-    private func readSettings() throws -> Data? {
+    func readSettings() throws -> Data? {
         guard FileManager.default.fileExists(atPath: paths.claudeSettings.path) else { return nil }
         do { return try Data(contentsOf: paths.claudeSettings) } catch {
             throw InstallError.io("could not read settings.json: \(error.localizedDescription)")
@@ -64,7 +64,7 @@ public struct HookInstaller: Sendable {
         return url
     }
 
-    private func writeSettings(_ data: Data) throws {
+    func writeSettings(_ data: Data) throws {
         do {
             try FileManager.default.createDirectory(at: paths.claudeSettings.deletingLastPathComponent(),
                                                     withIntermediateDirectories: true)

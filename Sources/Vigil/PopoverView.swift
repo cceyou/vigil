@@ -1,99 +1,458 @@
 import SwiftUI
 import VigilCore
 
+/// The menu bar popover in the "Live Activity" style: island, session card, waiting card, status tiles, actions.
 struct PopoverView: View {
     @Bindable var model: AppModel
 
     var body: some View {
-        let mood = model.mood
-        VStack(spacing: 0) {
-            HeroView(model: model, compact: model.tab != .overview)
-                .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+        let accent = model.accent
+        VStack(spacing: 12) {
+            ZStack(alignment: .trailing) {
+                IslandView(state: model.island, accent: accent)
+                    .frame(maxWidth: .infinity)
+                MoreMenu(model: model)
+            }
+            .padding(.bottom, 2)
 
-            ScrollView {
-                VStack(spacing: 14) {
-                    switch model.tab {
-                    case .overview: OverviewView(model: model)
-                    case .history: HistoryView(model: model)
-                    case .settings: SettingsView(model: model)
-                    case .selfTest: SelfTestView(model: model)
+            if let error = model.powerError {
+                NoticeCard(symbol: "exclamationmark.triangle.fill", title: L("Couldn't change sleep settings"), detail: error) {
+                    if !model.setup.sudoers {
+                        ActionButton(title: L("Install sleep permission"), busy: model.busy.contains("sudoers"), prominent: true,
+                                     accent: accent) { model.installSudoers() }
                     }
                 }
-                .id(model.tab)
-                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 14)),
-                                        removal: .opacity))
-                .padding(.horizontal, 16).padding(.bottom, 12).padding(.top, 2)
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
-            .scrollIndicators(.hidden)
-            .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.03),
-                                         .init(color: .black, location: 0.95), .init(color: .clear, location: 1)],
-                                 startPoint: .top, endPoint: .bottom))
+
+            if let reason = model.pausedReason {
+                NoticeCard(symbol: "pause.circle.fill", title: PausedText.title(reason), detail: PausedText.detail(reason, model: model)) {
+                    if reason == .lowBattery {
+                        ActionButton(title: L("Change battery limit"), accent: accent) { model.open(.settings) }
+                    }
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            SessionSection(model: model)
+
+            ForEach(model.waitingSessions.prefix(2)) { session in
+                WaitingCard(session: session) { model.openApp(for: session) }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            StatusTiles(environment: model.environment, accent: accent)
+
+            HStack(spacing: 10) {
+                Button(L("+1 h awake")) { model.keepAwake() }
+                    .buttonStyle(CapsuleButtonStyle(fill: .white, foreground: .black))
+                    .disabled(!model.enabled)
+                Button(L("Sleep now")) { model.sleepNow() }
+                    .buttonStyle(CapsuleButtonStyle(fill: Theme.card, foreground: .white))
+            }
+
+            if !model.setup.checklistComplete {
+                SetupChecklist(model: model)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
 
             if let message = model.message {
                 MessageBar(text: message) { model.dismissMessage() }
-                    .padding(.horizontal, 16).padding(.bottom, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            if model.tab != .selfTest {
-                TabBar(selection: $model.tab, tint: mood.tint)
-                    .padding(.horizontal, 16).padding(.bottom, 14).padding(.top, 4)
-            }
+            BagHint()
         }
-        .frame(width: 380, height: 600)
-        .background {
-            ZStack {
-                Rectangle().fill(.regularMaterial)
-                // Mood-tinted wash at the top; crossfades when the state changes.
-                LinearGradient(colors: [mood.tint.opacity(0.22), mood.glow.opacity(0.06), .clear],
-                               startPoint: .top, endPoint: .init(x: 0.5, y: 0.55))
-            }
-            .ignoresSafeArea()
-        }
-        .animation(.smooth(duration: 0.6), value: mood)
-        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: model.tab)
+        .padding(16)
+        .frame(width: 360)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Theme.background)
+        .environment(\.colorScheme, .dark)
+        .tint(accent)
+        .animation(.spring(response: 0.45, dampingFraction: 0.86), value: model.island.kind)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: model.waitingSessions.map(\.id))
         .animation(.smooth, value: model.message)
+        .animation(.smooth, value: model.setup)
     }
 }
 
-// MARK: - Hero
+// MARK: - Island
 
-struct HeroView: View {
+/// Centered black capsule: accent bolt on the left, the most important live value on the right.
+struct IslandView: View {
+    let state: IslandState
+    let accent: Color
+
+    private var text: String {
+        switch state {
+        case .working(let elapsed): return Format.clock(elapsed)
+        case .countdown(let remaining): return L("Sleeps in %@", Format.clock(remaining))
+        case .waiting: return L("Waiting")
+        case .idle: return L("Ready")
+        case .off: return L("Off")
+        case .paused: return L("Paused")
+        }
+    }
+
+    private var color: Color {
+        switch state {
+        case .working, .countdown: return accent
+        case .waiting: return Theme.waiting
+        case .idle, .off, .paused: return .secondary
+        }
+    }
+
+    private var width: CGFloat {
+        switch state {
+        case .working, .countdown, .paused: return 210
+        case .idle, .off: return 190
+        case .waiting: return 150
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(accent)
+                .frame(width: 24, height: 24)
+                .overlay(Image(systemName: "bolt.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(.black))
+            Spacer(minLength: 4)
+            Text(text)
+                .font(.system(size: 15, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(color)
+                .contentTransition(.numericText(countsDown: { if case .countdown = state { return true }; return false }()))
+                .lineLimit(1)
+        }
+        .padding(.leading, 7).padding(.trailing, 14)
+        .frame(width: width, height: 38)
+        .background(Capsule().fill(Color.black))
+        .overlay(Capsule().strokeBorder(Theme.outline, lineWidth: 1))
+        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: width)
+        .animation(.smooth(duration: 0.3), value: text)
+    }
+}
+
+/// "…" in the top right corner: History, Settings, Quit.
+struct MoreMenu: View {
     let model: AppModel
-    let compact: Bool
+    var body: some View {
+        Menu {
+            Button(L("History")) { model.open(.history) }
+            Button(L("Settings")) { model.open(.settings) }
+            Divider()
+            Button(L("Quit")) { model.quit() }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 30)
+                .background(Theme.card, in: Circle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(L("More"))
+    }
+}
+
+// MARK: - Session card(s)
+
+/// One card for the most recently active session, or a horizontally paged stack when several are working.
+struct SessionSection: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        let working = model.workingByActivity
+        if working.count > 1 {
+            VStack(spacing: 8) {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(working) { session in
+                            SessionCard(model: model, session: session)
+                                .containerRelativeFrame(.horizontal)
+                                .id(session.id)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $model.sessionPage)
+                .scrollIndicators(.hidden)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+
+                PageDots(ids: working.map(\.id), selected: model.sessionPage ?? working.first?.id, accent: model.accent) { id in
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { model.sessionPage = id }
+                }
+            }
+        } else {
+            SessionCard(model: model, session: model.primarySession)
+        }
+    }
+}
+
+struct PageDots: View {
+    let ids: [String]
+    let selected: String?
+    let accent: Color
+    let select: (String) -> Void
+    var body: some View {
+        HStack(spacing: 7) {
+            ForEach(ids, id: \.self) { id in
+                Button { select(id) } label: {
+                    Capsule()
+                        .fill(id == selected ? Color.white : Theme.track)
+                        .frame(width: id == selected ? 16 : 6, height: 6)
+                        .contentShape(Rectangle().inset(by: -4))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selected)
+    }
+}
+
+struct SessionCard: View {
+    let model: AppModel
+    let session: Session?
+
+    private var stateLabel: String {
+        switch model.island {
+        case .countdown: return L("Going to sleep")
+        case .off: return L("Off")
+        case .paused: return L("Paused")
+        case .working:
+            if let session, !session.isWorking { return L("Ready") }
+            return model.workingSessions.isEmpty ? L("Keeping awake") : L("Claude is working")
+        case .waiting, .idle: return L("Ready")
+        }
+    }
 
     private var title: String {
-        if let reason = model.pausedReason { return Self.pausedTitle(reason) }
-        switch model.phase {
-        case .off: return L("Vigil is off")
-        case .armed: return L("Armed · waiting for Claude")
-        case .working:
-            if model.onlySubagentsWorking { return L("Subagents working · %@", Format.clock(model.workingElapsed)) }
-            return L("Claude is working · %@", Format.clock(model.workingElapsed))
-        case .countdown: return L("Sleeping in %@", Format.clock(model.countdownRemaining ?? 0))
-        }
+        if let session { return session.projectName }
+        return model.keepAwakeRemaining != nil ? L("Keeping awake") : L("No Claude Code session")
     }
 
     private var subtitle: String {
-        if let reason = model.pausedReason { return Self.pausedDetail(reason, model: model) }
-        switch model.phase {
-        case .off: return L("Your Mac sleeps normally.")
-        case .armed:
-            return model.keepAwakeRemaining != nil ? L("Keeping awake") : L("Starts as soon as Claude Code begins working.")
-        case .working:
-            if model.onlySubagentsWorking {
-                return L("The main agent is done; still running: %@. Your Mac stays awake until they finish.",
-                         Format.subagents(model.activeSubagentCount))
+        if let session { return Format.agents(session.subagents.count) }
+        return model.enabled ? L("Starts as soon as Claude Code begins working.") : L("Your Mac sleeps normally.")
+    }
+
+    private var running: TimeInterval? {
+        if let session {
+            return model.now.timeIntervalSince(session.workingSince ?? session.startedAt)
+        }
+        return model.machine.awakeHeld ? model.awakeElapsed : nil
+    }
+
+    var body: some View {
+        let accent = model.accent
+        Card(padding: 20) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(accent)
+                    Text("Vigil").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(stateLabel).font(.system(size: 13, weight: .semibold)).foregroundStyle(accent)
+                        .contentTransition(.interpolate)
+                }
+
+                Text(title)
+                    .font(.system(size: 22, weight: .bold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.top, 14)
+                Text(subtitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .contentTransition(.numericText())
+                    .padding(.top, 2)
+
+                SleepTrack(progress: model.sleepProgress, accent: accent)
+                    .padding(.top, 18)
+
+                HStack(alignment: .firstTextBaseline) {
+                    if let running {
+                        FooterValue(label: L("Running"), value: Format.clock(running))
+                    }
+                    Spacer(minLength: 8)
+                    if let r = model.countdownRemaining, model.phase == .countdown {
+                        FooterValue(label: L("Sleeps in"), value: Format.clock(r))
+                    } else if let r = model.awakeRemaining {
+                        FooterValue(label: L("Awake for"), value: Format.clock(r))
+                    }
+                }
+                .padding(.top, 12)
+
+                if model.phase == .countdown {
+                    HStack {
+                        Spacer()
+                        Button(L("Cancel")) { model.cancelCountdown() }
+                            .buttonStyle(PillButtonStyle())
+                    }
+                    .padding(.top, 10)
+                    .transition(.opacity)
+                }
             }
-            let n = model.workingSessions.count
-            if n == 0 { return L("Keeping awake manually. The lid can stay closed.") }
-            return n == 1 ? L("1 session working. Your Mac stays awake, even with the lid closed.")
-                          : L("%d sessions working. Your Mac stays awake, even with the lid closed.", n)
-        case .countdown: return L("Claude Code has finished.")
+        }
+    }
+}
+
+struct FooterValue: View {
+    let label: String
+    let value: String
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(label).foregroundStyle(.secondary)
+            Text(value).foregroundStyle(.primary).monospacedDigit().contentTransition(.numericText())
+        }
+        .font(.system(size: 13, weight: .medium))
+        .lineLimit(1)
+    }
+}
+
+/// bolt ─── track ─── moon: progress toward sleep. `nil` progress: indeterminate, a slow shimmer moves along.
+struct SleepTrack: View {
+    let progress: Double?
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "bolt.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(accent)
+            GeometryReader { g in
+                let w = g.size.width
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.track).frame(height: 6)
+                    if let progress {
+                        Capsule().fill(accent).frame(width: max(6, w * progress), height: 6)
+                        Circle().fill(.white).frame(width: 14, height: 14)
+                            .shadow(color: .black.opacity(0.4), radius: 2)
+                            .offset(x: min(w - 14, max(0, w * progress - 7)))
+                    } else {
+                        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+                            let t = context.date.timeIntervalSinceReferenceDate
+                            let phase = (t / 2.6).truncatingRemainder(dividingBy: 1) // one sweep every 2.6 s
+                            let seg = w * 0.32
+                            Capsule()
+                                .fill(LinearGradient(colors: [accent.opacity(0), accent, accent.opacity(0)],
+                                                     startPoint: .leading, endPoint: .trailing))
+                                .frame(width: seg, height: 6)
+                                .offset(x: -seg + (w + seg) * phase)
+                        }
+                        .frame(width: w, height: 6)
+                        .clipShape(Capsule())
+                    }
+                }
+                .frame(height: 14)
+                .animation(.linear(duration: 1), value: progress)
+            }
+            .frame(height: 14)
+            Image(systemName: "moon.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+        }
+    }
+}
+
+// MARK: - Waiting card
+
+struct WaitingCard: View {
+    let session: Session
+    let open: () -> Void
+    var body: some View {
+        Card(padding: 14) {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Theme.waiting)
+                    .frame(width: 40, height: 40)
+                    .overlay(Image(systemName: "questionmark").font(.system(size: 18, weight: .bold)).foregroundStyle(.black))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.projectName).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                    Text(L("Waiting for your answer")).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.waiting)
+                }
+                Spacer(minLength: 6)
+                Button(L("Open"), action: open)
+                    .buttonStyle(PillButtonStyle(fill: Theme.waiting, foreground: .black))
+            }
+        }
+    }
+}
+
+// MARK: - Status tiles
+
+struct StatusTiles: View {
+    let environment: VigilCore.Environment
+    let accent: Color
+
+    var body: some View {
+        let env = environment
+        HStack(spacing: 8) {
+            Tile(symbol: env.lidClosed ? "laptopcomputer.slash" : "laptopcomputer", symbolColor: .primary,
+                 title: L("Lid"), value: env.lidClosed ? L("Closed (lid)") : L("Open (lid)"))
+            Tile(symbol: batterySymbol(env), symbolColor: env.isCharging ? Theme.accent(.green) : .primary,
+                 title: L("Battery"), value: env.batteryPercent.map { "\($0) %" } ?? "—", detail: batteryDetail(env))
+            Tile(symbol: env.thermal.rawValue >= ThermalLevel.serious.rawValue ? "thermometer.high" : "thermometer.medium",
+                 symbolColor: .primary, title: L("Temperature"), value: thermalText(env.thermal))
+        }
+        .animation(.smooth, value: env)
+    }
+
+    private func batterySymbol(_ env: VigilCore.Environment) -> String {
+        guard let pct = env.batteryPercent else { return "powerplug.fill" }
+        if env.isCharging { return "battery.100percent.bolt" }
+        switch pct {
+        case ..<13: return "battery.0percent"
+        case ..<38: return "battery.25percent"
+        case ..<63: return "battery.50percent"
+        case ..<88: return "battery.75percent"
+        default: return "battery.100percent"
         }
     }
 
-    static func pausedTitle(_ reason: GuardReason) -> String {
+    private func batteryDetail(_ env: VigilCore.Environment) -> String? {
+        guard env.batteryPercent != nil else { return nil }
+        if env.isCharging { return L("Charging") }
+        return env.onBattery ? L("On battery") : L("Plugged in")
+    }
+
+    private func thermalText(_ level: ThermalLevel) -> String {
+        switch level {
+        case .nominal: return L("Normal")
+        case .fair: return L("Elevated")
+        case .serious, .critical: return L("High")
+        }
+    }
+}
+
+struct Tile: View {
+    let symbol: String
+    let symbolColor: Color
+    let title: String
+    let value: String
+    var detail: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(symbolColor)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(height: 20)
+            Spacer(minLength: 10)
+            Text(title).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+            Text(value).font(.system(size: 15, weight: .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
+                .contentTransition(.numericText())
+            Text(detail ?? " ").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.tileRadius, style: .continuous))
+    }
+}
+
+// MARK: - Notices
+
+enum PausedText {
+    static func title(_ reason: GuardReason) -> String {
         switch reason {
         case .lowBattery: return L("Paused · battery low")
         case .thermal: return L("Paused · Mac is too hot")
@@ -102,7 +461,8 @@ struct HeroView: View {
         }
     }
 
-    static func pausedDetail(_ reason: GuardReason, model: AppModel) -> String {
+    @MainActor
+    static func detail(_ reason: GuardReason, model: AppModel) -> String {
         switch reason {
         case .lowBattery:
             let pct = model.environment.batteryPercent.map { "\($0) %" } ?? "?"
@@ -113,305 +473,25 @@ struct HeroView: View {
         case .manualSleep: return L("Resumes with the next prompt.")
         }
     }
-
-    var body: some View {
-        let mood = model.mood
-        let layout = compact ? AnyLayout(HStackLayout(spacing: 12)) : AnyLayout(VStackLayout(spacing: 10))
-        VStack(spacing: 12) {
-            layout {
-                ZStack {
-                    Orb(mood: mood, progress: model.countdownProgress, size: compact ? 56 : 132)
-                    center(mood: mood)
-                }
-                .frame(width: compact ? 56 : 132, height: compact ? 56 : 132)
-
-                VStack(alignment: compact ? .leading : .center, spacing: 4) {
-                    Text(title)
-                        .font(.system(size: compact ? 15 : 19, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                        .multilineTextAlignment(compact ? .leading : .center)
-                        .lineLimit(2)
-                    Text(subtitle)
-                        .font(.system(size: compact ? 11 : 12))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(compact ? .leading : .center)
-                        .lineLimit(compact ? 2 : 4)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: compact ? .leading : .center)
-            }
-
-            if !compact {
-                EnvironmentChips(model: model)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
-            }
-
-            if model.phase == .countdown && !compact {
-                HStack(spacing: 8) {
-                    Button { model.cancelCountdown() } label: { Label(L("Cancel"), systemImage: "xmark") }
-                        .buttonStyle(SoftButtonStyle(tint: mood.tint))
-                    Button { model.keepAwake() } label: { Label(L("Keep awake"), systemImage: "bolt.fill") }
-                        .buttonStyle(SoftButtonStyle(tint: mood.tint, prominent: true))
-                }
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .animation(.spring(response: 0.5, dampingFraction: 0.82), value: compact)
-        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: model.phase)
-        .animation(.smooth, value: title)
-    }
-
-    @ViewBuilder
-    private func center(mood: Mood) -> some View {
-        if mood == .countdown, !compact, let r = model.countdownRemaining {
-            VStack(spacing: 0) {
-                Text(Format.clock(r))
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText(countsDown: true))
-                Image(systemName: "moon.fill").font(.system(size: 11)).foregroundStyle(mood.tint)
-            }
-            .transition(.scale.combined(with: .opacity))
-        } else {
-            Image(systemName: mood.symbol)
-                .font(.system(size: compact ? 18 : 38, weight: .semibold))
-                .foregroundStyle(LinearGradient(colors: [mood.tint, mood.glow], startPoint: .top, endPoint: .bottom))
-                .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.pulse, options: .repeating, isActive: mood == .working || mood == .paused)
-                .shadow(color: mood.tint.opacity(0.5), radius: 8)
-        }
-    }
 }
 
-/// Live lid / power / heat readout. It makes it obvious why the Mac would or would not stay awake.
-struct EnvironmentChips: View {
-    let model: AppModel
-
+struct NoticeCard<Actions: View>: View {
+    let symbol: String
+    let title: String
+    let detail: String
+    @ViewBuilder var actions: Actions
     var body: some View {
-        let env = model.environment
-        let threshold = model.settings.config.lowBatteryThreshold
-        let low = env.onBattery && (env.batteryPercent ?? 100) < threshold
-        HStack(spacing: 6) {
-            Chip(symbol: env.lidClosed ? "laptopcomputer.slash" : "laptopcomputer",
-                 text: env.lidClosed ? L("Lid closed") : L("Lid open"))
-            if let pct = env.batteryPercent {
-                Chip(symbol: env.onBattery ? batterySymbol(pct) : "bolt.batteryblock.fill",
-                     text: env.onBattery ? "\(pct) %" : L("Plugged in"),
-                     tint: low ? Mood.paused.tint : .secondary)
-            }
-            if env.thermal.rawValue >= ThermalLevel.serious.rawValue {
-                Chip(symbol: "thermometer.high", text: L("Hot"), tint: Mood.paused.tint)
-            }
-        }
-        .animation(.smooth, value: env)
-    }
-
-    private func batterySymbol(_ pct: Int) -> String {
-        switch pct {
-        case ..<13: return "battery.0percent"
-        case ..<38: return "battery.25percent"
-        case ..<63: return "battery.50percent"
-        case ..<88: return "battery.75percent"
-        default: return "battery.100percent"
-        }
-    }
-}
-
-// MARK: - Overview
-
-struct OverviewView: View {
-    @Bindable var model: AppModel
-
-    var body: some View {
-        if let error = model.powerError {
-            Card {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Mood.paused.tint)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(L("Couldn't change sleep settings")).font(.system(size: 13, weight: .semibold))
-                        Text(error).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(3)
-                        if !model.setup.sudoers {
-                            ActionButton(title: L("Install sleep permission"), busy: model.busy.contains("sudoers"), prominent: true) {
-                                model.installSudoers()
-                            }
-                        }
-                    }
+        Card(padding: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: symbol).font(.system(size: 18)).foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).font(.system(size: 14, weight: .semibold))
+                    Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(4)
+                    actions.padding(.top, 4)
                 }
+                Spacer(minLength: 0)
             }
-            .transition(.move(edge: .top).combined(with: .opacity))
-        }
-
-        if model.pausedReason == .lowBattery {
-            Button { model.tab = .settings } label: {
-                Label(L("Change battery limit"), systemImage: "battery.25percent")
-            }
-            .buttonStyle(SoftButtonStyle(tint: Mood.paused.tint))
-            .transition(.move(edge: .top).combined(with: .opacity))
-        }
-
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                SectionTitle(text: L("Sessions"))
-                Spacer()
-                if !model.machine.sessions.isEmpty {
-                    Text("\(model.machine.sessions.count)")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
-                        .padding(.trailing, 4)
-                }
-            }
-            SessionList(model: model)
-        }
-
-        HStack(spacing: 8) {
-            Button { model.sleepNow() } label: { Label(L("Sleep now"), systemImage: "moon.zzz.fill") }
-                .buttonStyle(SoftButtonStyle(tint: Mood.armed.tint))
-            Button { model.keepAwake() } label: { Label(L("Keep awake for 1 h"), systemImage: "bolt.fill") }
-                .buttonStyle(SoftButtonStyle(tint: Mood.working.tint, prominent: true))
-                .disabled(!model.enabled)
-        }
-
-        if let remaining = model.keepAwakeRemaining {
-            Text(L("Keeping awake for another %@", Format.clock(remaining)))
-                .font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary).monospacedDigit()
-                .contentTransition(.numericText(countsDown: true))
-                .transition(.opacity)
-        }
-
-        if !model.setup.checklistComplete {
-            SetupChecklist(model: model)
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-        }
-
-        Card {
-            Toggle(isOn: Binding(get: { model.enabled }, set: { v in withAnimation(.smooth) { model.setEnabled(v) } })) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L("Watch Claude Code")).font(.system(size: 13, weight: .semibold))
-                    Text(L("Keep the Mac awake while Claude works, then sleep it.")).font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-            }
-            .toggleStyle(.switch)
-            .tint(Mood.working.tint)
-        }
-
-        BagHint()
-    }
-}
-
-struct SessionList: View {
-    let model: AppModel
-
-    var body: some View {
-        let sessions = model.machine.sessions
-        VStack(spacing: 6) {
-            if sessions.isEmpty {
-                HStack(spacing: 10) {
-                    Image(systemName: "terminal").foregroundStyle(.tertiary)
-                    Text(L("No Claude Code sessions yet")).font(.system(size: 12)).foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .padding(12)
-                .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .transition(.opacity)
-            } else {
-                ForEach(sessions) { s in
-                    SessionRow(session: s, now: model.now,
-                               showAgents: Binding(get: { model.expandedSessions.contains(s.id) },
-                                                   set: { on in
-                                                       if on { model.expandedSessions.insert(s.id) } else { model.expandedSessions.remove(s.id) }
-                                                   }))
-                        .transition(.asymmetric(insertion: .scale(scale: 0.92).combined(with: .opacity),
-                                                removal: .move(edge: .leading).combined(with: .opacity)))
-                }
-            }
-        }
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: sessions.map(\.id))
-        .animation(.smooth, value: sessions.map(\.state))
-        .animation(.smooth, value: sessions.map(\.subagents.count))
-    }
-}
-
-struct SessionRow: View {
-    let session: Session
-    let now: Date
-    @Binding var showAgents: Bool
-
-    var body: some View {
-        // Running subagents make the session "working" even after the main agent's Stop.
-        let state: SessionState = session.isWorking ? .working : session.state
-        let tint = Self.tint(state)
-        let since = session.workingSince ?? session.stateSince
-        HStack(alignment: .top, spacing: 12) {
-            LiveDot(tint: tint, live: state == .working)
-                .frame(width: 20, height: 34)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(session.projectName).font(.system(size: 13, weight: .semibold, design: .rounded)).lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(Format.clock(now.timeIntervalSince(since)))
-                        .font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary).monospacedDigit()
-                        .contentTransition(.numericText())
-                    if !session.subagents.isEmpty {
-                        subagentBadge(tint: tint)
-                            .transition(.scale(scale: 0.8).combined(with: .opacity))
-                    }
-                }
-                if showAgents && !session.subagents.isEmpty {
-                    Text(Format.agentTypes(session.subagents))
-                        .font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 2)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            Spacer()
-            Pill(text: Self.label(state), tint: tint)
-                .contentTransition(.interpolate)
-                .frame(height: 34)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(LinearGradient(colors: [tint.opacity(state == .working ? 0.12 : 0.05), .primary.opacity(0.03)],
-                                     startPoint: .leading, endPoint: .trailing))
-        }
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(tint.opacity(0.16)))
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showAgents)
-    }
-
-    /// "⑂ 2 subagents ›": hover lists the agent types, click discloses them under the row.
-    private func subagentBadge(tint: Color) -> some View {
-        Button { showAgents.toggle() } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "arrow.triangle.branch").font(.system(size: 9, weight: .bold))
-                Text(Format.subagents(session.subagents.count))
-                    .contentTransition(.numericText())
-                Image(systemName: "chevron.right").font(.system(size: 7, weight: .bold))
-                    .rotationEffect(.degrees(showAgents ? 90 : 0))
-            }
-            .font(.system(size: 10, weight: .semibold, design: .rounded))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(tint.opacity(0.14), in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .help(Format.agentTypes(session.subagents))
-    }
-
-    static func label(_ s: SessionState) -> String {
-        switch s {
-        case .working: return L("Working")
-        case .waiting: return L("Waiting for you")
-        case .idle: return L("Idle")
-        }
-    }
-
-    static func tint(_ s: SessionState) -> Color {
-        switch s {
-        case .working: return Mood.working.tint
-        case .waiting: return Mood.countdown.tint
-        case .idle: return Mood.off.tint
         }
     }
 }
@@ -423,55 +503,54 @@ struct SetupChecklist: View {
 
     var body: some View {
         let s = model.setup
-        let done = [s.sudoers, s.hooks, s.notifications, s.loginItem].filter { $0 }.count
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                SectionTitle(text: L("Setup"))
-                Spacer()
-                Text("\(done)/4").font(.system(size: 11, weight: .bold, design: .rounded)).foregroundStyle(.secondary)
-                    .contentTransition(.numericText()).padding(.trailing, 4)
-            }
-            Card {
-                VStack(alignment: .leading, spacing: 14) {
-                    GeometryReader { g in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(.primary.opacity(0.08))
-                            Capsule().fill(LinearGradient(colors: [Mood.working.tint, Mood.working.glow], startPoint: .leading, endPoint: .trailing))
-                                .frame(width: g.size.width * CGFloat(done) / 4)
-                        }
-                    }
-                    .frame(height: 5)
-                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: done)
-                    .padding(.bottom, 2)
-
-                    step(title: L("Sleep permission"),
-                         detail: L("One-time admin password so Vigil can keep the Mac awake with the lid closed."),
-                         done: s.sudoers, action: L("Allow"), busy: model.busy.contains("sudoers")) { model.installSudoers() }
-                    if s.hooksOutdated {
-                        step(title: L("Claude Code hooks are out of date"),
-                             detail: L("Adds the subagent hooks, so the Mac stays awake while subagents work. Other hooks are left alone."),
-                             done: s.hooks, action: L("Update hooks"), busy: model.busy.contains("hooks")) { model.updateHooks() }
-                    } else {
-                        step(title: L("Claude Code hooks"),
-                             detail: L("Adds hooks to ~/.claude/settings.json (backed up first)."),
-                             done: s.hooks, action: L("Add hooks"), busy: model.busy.contains("hooks")) { model.installHooks() }
-                    }
-                    step(title: L("Notifications"),
-                         detail: L("Warns you before the Mac sleeps, with Cancel and Keep awake buttons."),
-                         done: s.notifications, action: L("Allow"), busy: false) { model.requestNotifications() }
-                    step(title: L("Launch at login"),
-                         detail: L("Start Vigil automatically when you log in."),
-                         done: s.loginItem, action: L("Enable"), busy: false) { model.setLaunchAtLogin(true) }
-
-                    if model.hooksJustInstalled {
-                        Label(L("Restart Claude Code sessions that are already running so they load the new hooks."),
-                              systemImage: "arrow.clockwise")
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
-
-                    Button { model.runSelfTest() } label: { Label(L("Run self-test"), systemImage: "checklist") }
-                        .buttonStyle(SoftButtonStyle(tint: Mood.armed.tint))
+        let accent = model.accent
+        Card(padding: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text(L("Setup")).font(.system(size: 15, weight: .semibold))
+                    Spacer()
+                    Text("\(s.doneCount)/5").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).monospacedDigit()
+                        .contentTransition(.numericText())
                 }
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Theme.track)
+                        Capsule().fill(accent).frame(width: g.size.width * CGFloat(s.doneCount) / 5)
+                    }
+                }
+                .frame(height: 6)
+                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: s.doneCount)
+
+                step(title: L("Sleep permission"),
+                     detail: L("One-time admin password so Vigil can keep the Mac awake with the lid closed."),
+                     done: s.sudoers, action: L("Allow"), busy: model.busy.contains("sudoers")) { model.installSudoers() }
+                if s.hooksOutdated {
+                    step(title: L("Claude Code hooks are out of date"),
+                         detail: L("Adds the subagent hooks, so the Mac stays awake while subagents work. Other hooks are left alone."),
+                         done: s.hooks, action: L("Update hooks"), busy: model.busy.contains("hooks")) { model.updateHooks() }
+                } else {
+                    step(title: L("Claude Code hooks"),
+                         detail: L("Adds hooks to ~/.claude/settings.json (backed up first)."),
+                         done: s.hooks, action: L("Add hooks"), busy: model.busy.contains("hooks")) { model.installHooks() }
+                }
+                step(title: L("Status line"),
+                     detail: L("Shows your Claude usage limits at the screen edge. Your current status line keeps working."),
+                     done: s.statusLine, action: L("Install"), busy: model.busy.contains("statusLine")) { model.installStatusLine() }
+                step(title: L("Notifications"),
+                     detail: L("Warns you before the Mac sleeps, with Cancel and Keep awake buttons."),
+                     done: s.notifications, action: L("Allow"), busy: false) { model.requestNotifications() }
+                step(title: L("Launch at login"),
+                     detail: L("Start Vigil automatically when you log in."),
+                     done: s.loginItem, action: L("Enable"), busy: false) { model.setLaunchAtLogin(true) }
+
+                if model.hooksJustInstalled {
+                    Label(L("Restart Claude Code sessions that are already running so they load the new hooks."),
+                          systemImage: "arrow.clockwise")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+
+                Button { model.runSelfTest() } label: { Label(L("Run self-test"), systemImage: "checklist") }
+                    .buttonStyle(PillButtonStyle())
             }
         }
     }
@@ -481,13 +560,13 @@ struct SetupChecklist: View {
                       perform: @escaping () -> Void) -> some View {
         if !done {
             HStack(alignment: .top, spacing: 10) {
-                StatusDot(ok: done)
+                StatusDot(ok: done, accent: model.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 13, weight: .semibold))
                     Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 6)
-                ActionButton(title: action, busy: busy, prominent: true, action: perform)
+                ActionButton(title: action, busy: busy, prominent: true, accent: model.accent, action: perform)
             }
             .transition(.move(edge: .leading).combined(with: .opacity))
         }
@@ -498,13 +577,15 @@ struct SetupChecklist: View {
 
 struct BagHint: View {
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "flame.fill").foregroundStyle(Mood.countdown.tint).font(.system(size: 11))
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "flame.fill").font(.system(size: 10))
             Text(L("A closed laptop in a bag overheats. Keep it on a flat surface, ideally plugged in."))
-                .font(.system(size: 11)).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .font(.system(size: 10))
+        .foregroundStyle(.tertiary)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 6)
     }
 }
 
@@ -513,12 +594,12 @@ struct MessageBar: View {
     let dismiss: () -> Void
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "info.circle.fill").foregroundStyle(Mood.armed.tint)
-            Text(text).font(.system(size: 11)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            Image(systemName: "info.circle.fill").foregroundStyle(.secondary)
+            Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             Spacer(minLength: 4)
             Button(action: dismiss) { Image(systemName: "xmark") }.buttonStyle(.plain).foregroundStyle(.secondary)
         }
-        .padding(10)
-        .background(Mood.armed.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(14)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.tileRadius, style: .continuous))
     }
 }

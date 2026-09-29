@@ -18,8 +18,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
-        popover.contentSize = NSSize(width: 380, height: 600)
-        popover.contentViewController = NSHostingController(rootView: PopoverView(model: model))
+        popover.appearance = NSAppearance(named: .darkAqua)
+        // Height follows the content (sessions, waiting card, checklist come and go).
+        let host = NSHostingController(rootView: PopoverView(model: model))
+        host.sizingOptions = .preferredContentSize
+        popover.contentViewController = host
 
         if let button = statusItem.button {
             button.target = self
@@ -28,7 +31,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             button.imagePosition = .imageLeading
             button.setAccessibilityLabel("Vigil")
         }
-        model.onChange = { [weak self] in self?.refresh() }
     }
 
     func refresh() {
@@ -55,13 +57,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func tooltip() -> String {
-        switch model.phase {
+        switch model.island {
         case .off: return L("Vigil is off")
-        case .armed: return L("Armed · waiting for Claude")
+        case .idle: return L("Armed · waiting for Claude")
+        case .waiting: return L("Claude is waiting for you")
+        case .paused(let reason): return PausedText.title(reason)
         case .working:
             if model.onlySubagentsWorking { return L("Subagents working · %@", Format.clock(model.workingElapsed)) }
             return L("Claude is working · %@", Format.clock(model.workingElapsed))
-        case .countdown: return L("Sleeping in %@", Format.clock(model.countdownRemaining ?? 0))
+        case .countdown(let r): return L("Sleeping in %@", Format.clock(r))
         }
     }
 
@@ -77,9 +81,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
     }
 
-    func showPopover(tab: Tab? = nil) {
+    func showPopover() {
         guard let button = statusItem.button else { return }
-        if let tab { model.tab = tab }
         model.refreshSetup()
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -105,6 +108,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     @objc private func toggleEnabled() { model.toggle() }
     @objc private func sleepNow() { model.sleepNow() }
-    @objc private func openSettings() { showPopover(tab: .settings) }
+    @objc private func openSettings() { model.open(.settings) }
+
+    func closePopover() { if popover.isShown { popover.performClose(nil) } }
     @objc private func quit() { model.quit() }
 }

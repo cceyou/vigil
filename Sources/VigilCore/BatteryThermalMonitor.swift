@@ -14,7 +14,7 @@ public final class BatteryThermalMonitor: @unchecked Sendable {
     public static func snapshot() -> Environment {
         var env = Environment()
         env.lidClosed = readLidClosed()
-        (env.onBattery, env.batteryPercent) = readBattery()
+        (env.onBattery, env.batteryPercent, env.isCharging) = readBattery()
         switch ProcessInfo.processInfo.thermalState {
         case .nominal: env.thermal = .nominal
         case .fair: env.thermal = .fair
@@ -33,9 +33,9 @@ public final class BatteryThermalMonitor: @unchecked Sendable {
         return (value?.takeRetainedValue() as? Bool) ?? false
     }
 
-    static func readBattery() -> (onBattery: Bool, percent: Int?) {
+    static func readBattery() -> (onBattery: Bool, percent: Int?, charging: Bool) {
         guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-              let list = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] else { return (false, nil) }
+              let list = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] else { return (false, nil, false) }
         for source in list {
             guard let desc = IOPSGetPowerSourceDescription(info, source)?.takeUnretainedValue() as? [String: Any],
                   (desc[kIOPSTypeKey] as? String) == kIOPSInternalBatteryType else { continue }
@@ -44,9 +44,10 @@ public final class BatteryThermalMonitor: @unchecked Sendable {
             let max = desc[kIOPSMaxCapacityKey] as? Int
             var percent: Int?
             if let current, let max, max > 0 { percent = Int((Double(current) / Double(max) * 100).rounded()) }
-            return (onBattery, percent)
+            let charging = !onBattery && (desc[kIOPSIsChargingKey] as? Bool ?? false)
+            return (onBattery, percent, charging)
         }
-        return (false, nil)
+        return (false, nil, false)
     }
 
     /// Calls `onChange` when anything changes (polled every 2 s, plus immediately on thermal notifications).

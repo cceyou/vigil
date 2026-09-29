@@ -21,7 +21,10 @@ let package = Package(
         // SwiftUI menu bar app.
         .executableTarget(
             name: "Vigil",
-            dependencies: ["VigilCore"]
+            dependencies: ["VigilCore"],
+            linkerSettings: [
+                .linkedFramework("Carbon"), // RegisterEventHotKey (global shortcut without Accessibility)
+            ]
         ),
         .testTarget(
             name: "VigilTests",

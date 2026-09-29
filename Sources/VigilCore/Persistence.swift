@@ -1,14 +1,80 @@
 import Foundation
 
+public enum AccentChoice: String, Codable, CaseIterable, Sendable { case green, blue, orange, purple }
+
+public enum NotchDisplays: String, Codable, CaseIterable, Sendable {
+    /// One notch on every display.
+    case all
+    /// Only on the display with the menu bar.
+    case main
+}
+
+/// A global shortcut in Carbon terms (virtual key code + Carbon modifier mask).
+public struct HotKeySpec: Codable, Equatable, Sendable {
+    public var enabled = true
+    /// kVK_ANSI_U.
+    public var keyCode: UInt32 = 32
+    /// cmdKey | optionKey.
+    public var modifiers: UInt32 = 0x0100 | 0x0800
+
+    public init(enabled: Bool = true, keyCode: UInt32 = 32, modifiers: UInt32 = 0x0100 | 0x0800) {
+        self.enabled = enabled
+        self.keyCode = keyCode
+        self.modifiers = modifiers
+    }
+}
+
+/// Look and edge-notch preferences.
+public struct UISettings: Codable, Equatable, Sendable {
+    public var notchEnabled = true
+    /// Vertical position of the notch, 0.2...0.8 of the screen height (from the bottom).
+    public var notchPosition = 0.5
+    public var notchDisplays = NotchDisplays.all
+    /// How long the pointer rests on the notch before the card opens.
+    public var hoverDelay: TimeInterval = 0.18
+    public var hideInFullScreen = true
+    public var shortcut = HotKeySpec()
+    public var accent = AccentChoice.green
+    public var usageNotifications = true
+
+    public init() {}
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = UISettings()
+        notchEnabled = try c.decodeIfPresent(Bool.self, forKey: .notchEnabled) ?? d.notchEnabled
+        notchPosition = min(0.8, max(0.2, try c.decodeIfPresent(Double.self, forKey: .notchPosition) ?? d.notchPosition))
+        notchDisplays = (try? c.decodeIfPresent(NotchDisplays.self, forKey: .notchDisplays)) ?? d.notchDisplays
+        hoverDelay = try c.decodeIfPresent(TimeInterval.self, forKey: .hoverDelay) ?? d.hoverDelay
+        hideInFullScreen = try c.decodeIfPresent(Bool.self, forKey: .hideInFullScreen) ?? d.hideInFullScreen
+        shortcut = try c.decodeIfPresent(HotKeySpec.self, forKey: .shortcut) ?? d.shortcut
+        accent = (try? c.decodeIfPresent(AccentChoice.self, forKey: .accent)) ?? d.accent
+        usageNotifications = try c.decodeIfPresent(Bool.self, forKey: .usageNotifications) ?? d.usageNotifications
+    }
+}
+
 public struct AppSettings: Codable, Equatable, Sendable {
     public var enabled: Bool = true
     public var config = Config()
     public var dryRun = false
     public var hasSeenOnboarding = false
+    public var ui = UISettings()
     /// Settings migrations applied so far (nil = saved before migrations existed).
     public var revision: Int?
     public static let currentRevision = 2
     public init() { revision = Self.currentRevision }
+
+    // Every key is optional: settings saved by an older build (without `ui`, say) must load, not reset to defaults.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = AppSettings()
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? d.enabled
+        config = try c.decodeIfPresent(Config.self, forKey: .config) ?? d.config
+        dryRun = try c.decodeIfPresent(Bool.self, forKey: .dryRun) ?? d.dryRun
+        hasSeenOnboarding = try c.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? d.hasSeenOnboarding
+        ui = try c.decodeIfPresent(UISettings.self, forKey: .ui) ?? d.ui
+        revision = try c.decodeIfPresent(Int.self, forKey: .revision)
+    }
 
     /// Revision 2: the low-battery default dropped from 15 % to 5 %. At 15 % the guard kept tripping in normal
     /// use and the Mac slept as soon as the lid closed; a value still at the old default moves to the new one.

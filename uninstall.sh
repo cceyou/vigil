@@ -3,7 +3,7 @@
 #
 #   ./uninstall.sh          interactive
 #   ./uninstall.sh --yes    do everything without asking
-#   ./uninstall.sh --hooks-only [--yes]   only remove the hook entries from settings.json (CLAUDE_SETTINGS=<file>
+#   ./uninstall.sh --hooks-only [--yes]   only remove the hook and status line entries from settings.json (CLAUDE_SETTINGS=<file>
 #                                         overrides the path; handy for trying it on a copy)
 #
 # Steps: quit the app (it restores normal sleep) -> remove our hooks from ~/.claude/settings.json (backup first)
@@ -76,6 +76,36 @@ PY
 else echo "no Vigil hooks found"; fi
 }
 
+restore_statusline() {
+say "Claude Code status line in $SETTINGS"
+if [ -f "$SETTINGS" ] && grep -q "Vigil/statusline.sh" "$SETTINGS"; then
+  if ask "Put your previous status line back (a timestamped backup is made first)?"; then
+    SETTINGS="$SETTINGS" ORIGINAL="$SUPPORT/statusline.original.json" python3 - <<'PY'
+import json, os, shutil, sys, time
+path, original_path = os.environ["SETTINGS"], os.environ["ORIGINAL"]
+try:
+    root = json.load(open(path, encoding="utf-8"))
+except Exception as e:
+    sys.exit(f"settings.json is not valid JSON ({e}); leaving it untouched. Remove the statusLine entry by hand.")
+line = root.get("statusLine")
+if not (isinstance(line, dict) and "Vigil/statusline.sh" in str(line.get("command", ""))):
+    sys.exit("statusLine is not Vigil's; nothing to do")
+original = None
+if os.path.exists(original_path):
+    original = json.load(open(original_path, encoding="utf-8"))
+if original is None: root.pop("statusLine", None)
+else: root["statusLine"] = original
+backup = f"{path}.vigil-backup-{time.strftime('%Y%m%d-%H%M%S')}"
+shutil.copy2(path, backup)
+tmp = path + ".vigil-tmp"
+with open(tmp, "w", encoding="utf-8") as f: json.dump(root, f, indent=2, sort_keys=True, ensure_ascii=False); f.write("\n")
+os.replace(tmp, path)
+print(("restored your previous status line" if original is not None else "removed Vigil's status line") + f"; backup: {backup}")
+PY
+  fi
+else echo "no Vigil status line found"; fi
+}
+
 remove_sudoers() {
 say "Sleep permission (/etc/sudoers.d/vigil)"
 if [ -e /etc/sudoers.d/vigil ]; then
@@ -102,6 +132,6 @@ if ask "Delete /Applications/Vigil.app, $SUPPORT and the saved preferences?"; th
 fi
 }
 
-if [ "$HOOKS_ONLY" = 1 ]; then remove_hooks; exit 0; fi
-quit_vigil; login_item; remove_hooks; remove_sudoers; restore_sleep; remove_app
+if [ "$HOOKS_ONLY" = 1 ]; then remove_hooks; restore_statusline; exit 0; fi
+quit_vigil; login_item; remove_hooks; restore_statusline; remove_sudoers; restore_sleep; remove_app
 say "Done"

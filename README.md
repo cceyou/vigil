@@ -2,7 +2,8 @@
 
 A macOS menu bar app that keeps your MacBook **awake with the lid closed while Claude Code is working**, then puts it to **sleep once Claude Code has finished**.
 
-- Menu bar only (no Dock icon, no Cmd+Tab entry). Click the icon for the popover, right-click for Toggle / Sleep now / Settings / Quit.
+- Menu bar only (no Dock icon, no Cmd+Tab entry). Click the icon for the popover (a black "Live Activity" style card), right-click for Toggle / Sleep now / Settings / Quit.
+- A thin **edge notch** on the right side of the screen opens a Liquid Glass card with your **Claude usage limits** (5-hour and weekly), read from Claude Code's documented status line JSON.
 - Knows what Claude Code is doing through **hooks**, not by watching processes, and tracks any number of concurrent sessions.
 - Fails safe: `disablesleep` is always restored on quit, on signals, at launch, and by a watchdog if the app is killed.
 - English and Czech, following the system language. macOS 14+. `build.sh` builds for the machine it runs on (developed and tested on Apple silicon; Intel is untested).
@@ -26,12 +27,54 @@ The first launch opens the popover with a checklist. Each item shows a green che
 
 1. **Sleep permission**: click *Allow*, enter your admin password once. This installs `/etc/sudoers.d/vigil`, so `pmset disablesleep` works without a password afterwards.
 2. **Claude Code hooks**: click *Add hooks*. Vigil backs up `~/.claude/settings.json`, then merges its hooks in.
-3. **Notifications**: click *Allow* and accept the macOS prompt.
-4. **Launch at login**: click *Enable*.
+3. **Status line**: click *Install*. Needed for the usage card; your existing status line keeps working (see [Claude usage](#edge-notch-and-claude-usage)).
+4. **Notifications**: click *Allow* and accept the macOS prompt.
+5. **Launch at login**: click *Enable*.
 
-Then click **Run self-test**. It checks the sudo permission, the hooks (present *and* up to date), the socket, a fake hook event sent through the real `hook.sh`, a fake `SubagentStart` → `SubagentStop` pair (the session must go working → idle), and notification authorization, with a fix button next to anything that fails. The fake subagent events run through a private sandbox state machine, so the self-test can never hold the Mac awake or put it to sleep.
+Then click **Run self-test**. It checks the sudo permission, the hooks (present *and* up to date), the socket, a fake hook event sent through the real `hook.sh`, a fake `SubagentStart` → `SubagentStop` pair (the session must go working → idle), the status line (wrapper installed, previous command chained, a fake status line JSON through the real `statusline.sh` to the socket) and notification authorization, with a fix button next to anything that fails. The fake subagent events run through a private sandbox state machine, so the self-test can never hold the Mac awake or put it to sleep.
 
 > Restart Claude Code sessions that were already running so they load the new hooks. (Recent Claude Code versions also pick up hook changes live, but restarting is the documented way.)
+
+## The popover
+
+Pure black, `#1C1C1E` cards, one accent colour (green by default; blue, orange or purple in Settings). Orange is reserved for "waiting for you". Top to bottom:
+
+1. **Island**: a black capsule with the most important live value: elapsed time while Claude works, *Spí za 0:24* during the sleep countdown, *Čeká* (orange) when a session waits for you, *Připraveno* when idle. The menu bar icon mirrors it (bolt / moon / exclamation mark).
+2. **Session card** for the most recently active session: project name, *Hlavní agent + 2 subagenti* (Czech plurals: 1 subagent, 2–4 subagenti, 0 and 5+ subagentů), a bolt → moon track (the used part of *keep awake 1 h*, the countdown, or a slow shimmer while Claude works without a timer), and *Běží …* / *Vzhůru ještě …* (the manual hour or the max keep-awake failsafe, whichever ends first). With several working sessions the cards page horizontally with dots. *Zrušit* cancels a running countdown.
+3. **Waiting card** when a session waits for your answer. *Otevřít* walks up the process tree from the Claude PID to the app that owns it (Terminal, iTerm, Ghostty, VS Code…) and brings it to the front; if none is found it opens the Claude app.
+4. **Tiles**: lid, battery (the symbol is green only while charging), temperature (`ProcessInfo.thermalState`: nominal = Normální, fair = Zvýšená, serious/critical = Vysoká).
+5. **+1 h vzhůru** and **Uspat hned**.
+6. **…** (top right): History, Settings, Quit. History, Settings and Self-test open in their own small windows.
+
+The setup checklist, power errors and guard notices (low battery, heat, time limit) appear as extra cards only when they apply.
+
+## Edge notch and Claude usage
+
+A 5×56 pt glass pill sits on the right edge of the screen (vertically centred by default; position 20–80 % in Settings). It grows to 9×72 pt when the pointer comes within about 12 pt. Rest on it for 180 ms (configurable) and a card slides out; move away from both and it hides after 400 ms. Click the card to **pin** it; **Esc** or a click on the notch closes it. **⌥⌘U** (configurable, can be turned off) toggles the card from anywhere.
+
+- The notch and card are borderless `NSPanel`s with `.nonactivatingPanel`: they never become key and never take focus from the app you are in. Hover comes from an `NSTrackingArea` on the panel: no global event monitor, no Accessibility permission. The shortcut is a Carbon `RegisterEventHotKey`.
+- It never opens while a mouse button is held (dragging a window to the edge), stays 80 pt away from the corners (Hot Corners), and sits inside `visibleFrame`, so a Dock on the right keeps it just inside the Dock.
+- One notch per display, or only the main display. Hidden while an app is full screen on that display (default on; detected from window bounds, which need no Screen Recording permission).
+- **Esc trade-off**: the card can never become key, so Vigil cannot see key presses the normal way. While (and only while) the card is pinned, Vigil registers Esc as a Carbon hotkey. That Esc does not reach the frontmost app (Claude Code uses Esc to interrupt), so press it again after the card has closed.
+
+**The card** (Liquid Glass via `.glassEffect()` on macOS 26, `.ultraThinMaterial` with a hairline and a soft shadow before that) is monochrome. Its only colours are warnings: a bar turns orange at 80 % and red at 95 %, a context ring turns orange at 80 % (*brzy auto-compact*). It shows:
+
+- *Aktuální relace* (5-hour window) and *Tento týden* (weekly window): percentage, bar, reset time, and for the week a pace line comparing used % with the elapsed share of the week (*Tempo v pořádku* or *Při tomto tempu limit dojde v pátek kolem 14:00*).
+- How fresh the data is; after 15 minutes: *Data z 14:02 — spusť Claude Code pro aktualizaci*. Once a window's reset time has passed it shows 0 % / *Obnoveno* instead of the old number.
+- Up to three Claude Code sessions with model name and context-window use, then the Vigil state and **+1 h** / **Uspat** buttons.
+
+**Where the numbers come from.** Only documented sources: Claude Code pipes JSON to the status line command on stdin. Since v2.1.80, when you are logged in with a **Claude.ai Pro or Max** subscription, it includes `rate_limits.five_hour` and `rate_limits.seven_day` (`used_percentage`, `resets_at` in epoch seconds), plus `session_id`, `cwd`, `model.display_name` and `context_window.used_percentage`. `rate_limits` appears only **after the first API response** of a session. Vigil does not call undocumented endpoints and does not read OAuth tokens from the Keychain. With an API key or an older Claude Code the card says why it is empty; everything else keeps working.
+
+**The status line wrapper** (`~/Library/Application Support/Vigil/statusline.sh`, installed through the same backed-up settings.json merge as the hooks):
+
+- reads stdin once and forwards the JSON to `vigil.sock` in the background (`nc -U -w 1`), so it never blocks;
+- if you already had a `statusLine` command, runs it with the same stdin and prints its output unchanged;
+- otherwise prints one short line, e.g. `Claude 42 % · týden 15 %`;
+- always exits 0.
+
+Your previous `statusLine` object is saved verbatim in `statusline.original.json` (its command in `statusline.chain`), and Vigil's entry keeps its other keys such as `padding`. **Remove** (Settings ▸ Status line, or `uninstall.sh`) puts it back exactly, or drops the key if there was none. Installing twice changes nothing.
+
+**Notifications** (on by default): the 5-hour window crosses 80 % and 95 %, the weekly window crosses 80 %, and *Limit obnoven — můžeš pokračovat* when a window with usage in it resets. Each fires once per window cycle. The last known values are kept in `usage.json`.
 
 ## How it works
 
@@ -104,13 +147,13 @@ For a personal tool the sudoers rule is the simpler trade; if you distribute Vig
 
 ## Settings
 
-Launch at login, grace period (10 s to 5 min), maximum keep-awake (1 to 24 h), stuck subagent limit (30 min, 1, 2 or 4 h), low-battery threshold, only-sleep-if-lid-closed, notification policy, install/update/remove hooks, install/remove sleep permission, Dry run, Run self-test, Open log.
+Watch Claude Code on/off, launch at login, grace period (10 s to 5 min), maximum keep-awake (1 to 24 h), stuck subagent limit (30 min, 1, 2 or 4 h), low-battery threshold, only-sleep-if-lid-closed, notification policy, install/update/remove hooks, install/remove sleep permission, Dry run, Run self-test, Open log. **Look**: accent colour (green, blue, orange, purple). **Edge notch and usage**: notch on/off, position on the edge, displays (all / main), hover delay, hide in full-screen apps, keyboard shortcut (record a new one, or turn it off), usage notifications, install/remove the status line.
 
 **Dry run** goes through the whole flow (working → idle → countdown → restore → sleep) but only logs `would run: pmset …`, and never calls `pmset`. Use *Simulate a session* to watch it happen (the simulated session includes a subagent that outlives the main agent's `Stop`).
 
-The popover shows a badge on a session row while subagents run (*alwayson · Working · 2 subagents*); hover it or click it to see their types (*Explore, code-reviewer*). When every main agent is done but subagents still run, the header reads *Subagents working · 0:12:40* instead of a countdown, and the menu bar icon stays in the working state.
+While subagents run, the session card reads *Hlavní agent + 2 subagenti*. When every main agent is done but subagents still run, the island keeps counting and the menu bar icon stays in the working state (its tooltip says *Subagents working*).
 
-Data lives in `~/Library/Application Support/Vigil/`: `hook.sh`, `vigil.sock`, `history.json` (last 50 sessions: project, start, duration, how it ended, most subagents at once and total subagent time), `logs/vigil.log` (rotating, 1 MB × 3). Preferences are in `defaults read cz.krystof.vigil`.
+Data lives in `~/Library/Application Support/Vigil/`: `hook.sh`, `statusline.sh` (+ `statusline.original.json`, `statusline.chain`), `usage.json` (last known limits and per-session model/context), `vigil.sock`, `history.json` (last 50 sessions: project, start, duration, how it ended, most subagents at once and total subagent time), `logs/vigil.log` (rotating, 1 MB × 3). Preferences are in `defaults read cz.krystof.vigil`.
 
 ## Troubleshooting
 
@@ -122,6 +165,9 @@ Data lives in `~/Library/Application Support/Vigil/`: `hook.sh`, `vigil.sock`, `
 | "Couldn't change sleep settings" | The sudoers rule is missing: run `sudo -n -l` and look for the two `pmset` commands, or click *Install sleep permission*. |
 | `pmset -g \| grep SleepDisabled` shows 1 with Vigil not running | `sudo pmset -a disablesleep 0` (relaunching Vigil also fixes it). |
 | Hook commands fail in Claude Code | `hook.sh` missing? Vigil restores it at launch and every 10 s while running. Or click *Install hooks* again. |
+| Usage card says "No limits yet" | Limits arrive only with a Claude.ai Pro/Max login, Claude Code 2.1.80+, and after the first response of a session. `grep usage ~/Library/Application\ Support/Vigil/logs/vigil.log`. Self-test ▸ *Status line* must be green. |
+| My old status line disappeared | Settings ▸ *Status line* ▸ *Remove* restores it exactly (it is in `statusline.original.json`). While installed it is still run through `statusline.chain`. |
+| Esc does nothing in the terminal | The usage card is pinned; the first Esc closes it. |
 | No notification buttons | System Settings ▸ Notifications ▸ Vigil ▸ set the style to *Alerts* to keep the buttons on screen. |
 | Icon hidden on a notched MacBook | Too many menu bar icons: hold ⌘ and drag some away. |
 | `codesign` fails with "detritus not allowed" | The project is in an iCloud-synced folder (Desktop/Documents). `build.sh` builds and signs under `~/Library/Caches/Vigil` (valid), but iCloud re-stamps the copy in `./build` seconds later, so `codesign --verify` on *that* copy fails even though the app launches. Use `./build.sh --install` (a copy in `/Applications` always verifies), or keep the project outside iCloud. |
@@ -139,11 +185,11 @@ In the app: Settings ▸ *Remove hooks*, *Remove* (sleep permission), turn off *
 ./uninstall.sh --hooks-only [--yes]   # only the settings.json entries
 ```
 
-It quits Vigil (which restores sleep), removes only Vigil's entries from `~/.claude/settings.json` (timestamped backup first), deletes `/etc/sudoers.d/vigil` (password), makes sure `SleepDisabled` is 0, and deletes the app, its data and its preferences. By hand: `sudo rm /etc/sudoers.d/vigil`, remove entries containing `Vigil/hook.sh` from `settings.json` (or restore a `settings.json.vigil-backup-*`), then delete `Vigil.app` and `~/Library/Application Support/Vigil`.
+It quits Vigil (which restores sleep), removes only Vigil's entries from `~/.claude/settings.json` and puts your previous `statusLine` back (timestamped backup first), deletes `/etc/sudoers.d/vigil` (password), makes sure `SleepDisabled` is 0, and deletes the app, its data and its preferences. By hand: `sudo rm /etc/sudoers.d/vigil`, remove entries containing `Vigil/hook.sh` from `settings.json` (or restore a `settings.json.vigil-backup-*`), then delete `Vigil.app` and `~/Library/Application Support/Vigil`.
 
 ## Manual test checklist
 
-1. `./build.sh && open build/Vigil.app`, complete the checklist, **Run self-test**: all six checks green.
+1. `./build.sh && open build/Vigil.app`, complete the checklist, **Run self-test**: all seven checks green.
 2. Start a long Claude Code task (for example ask it to run a 3-minute `sleep`). Icon turns to ⚡, header says "Claude is working".
 3. `pmset -g | grep SleepDisabled` → `1`. `pmset -g assertions | grep Vigil` → two assertions.
 4. **Close the lid** (on a hard surface, plugged in). Wait a minute, then open a screen-share/SSH or just check later that the task kept running and the Mac never slept.
@@ -154,17 +200,20 @@ It quits Vigil (which restores sleep), removes only Vigil's entries from `~/.cla
 8. Press Ctrl+C in a session mid-task: within about 10 s the session disappears and the countdown starts.
 9. Start a task, then `kill -9 $(pgrep -x Vigil)`: `pmset -g | grep SleepDisabled` is back to `0` within a few seconds.
 10. Start a task, then Quit Vigil from the menu, and again with `kill $(pgrep -x Vigil)`: `SleepDisabled` returns to `0` immediately.
-11. Battery/thermal guards: unplug and set the threshold above the current level (Settings ▸ Low battery threshold): Vigil restores and sleeps at once.
+11. Usage: after a response in Claude Code (Pro/Max login), hover the right screen edge: the card shows both windows and the session. Drag a window to the right edge with the mouse held: the card must not open. Click the card (pin icon), press Esc: it closes. ⌥⌘U toggles it.
+12. Battery/thermal guards: unplug and set the threshold above the current level (Settings ▸ Low battery threshold): Vigil restores and sleeps at once.
 
 ## Development
 
 ```bash
 swift build                    # debug build (Vigil.app is assembled only by build.sh)
 ./build.sh --test              # unit tests + release build
-Vigil --snapshot <dir>         # render the popover to PNGs (light + dark), no permissions needed
+Vigil --snapshot <dir>         # render the popover, windows and usage card to PNGs, no permissions needed
 ```
 
-Layout: `Sources/VigilCore` (StateMachine, HookServer, PowerController, SettingsInstaller = `ClaudeSettingsMerger` + `HookInstaller` + `SudoersInstaller`, Notifier, BatteryThermalMonitor, Persistence, SelfTest, Logging), `Sources/Vigil` (AppKit shell + SwiftUI popover), `Tests/VigilTests` (97 tests: state machine incl. multi-session/grace/interrupt/cancel and subagents (Stop with active subagents, last SubagentStop, SubagentStart during countdown, unknown SubagentStop, stuck-subagent timeout), settings.json merger incl. missing/invalid/idempotent/removal and the v1 → v2 hook upgrade, PID liveness, socket + real `hook.sh` round trips, watchdog script, localization completeness).
+Layout: `Sources/VigilCore` (StateMachine, HookServer, PowerController, SettingsInstaller = `ClaudeSettingsMerger` + `HookInstaller` + `SudoersInstaller`, StatusLine (parser) + StatusLineInstaller + StatusLineScript, Usage (limits, pace, rollover, alerts), CzechPlural, ProcessTree, Notifier, BatteryThermalMonitor, Persistence, SelfTest, Logging), `Sources/Vigil` (AppKit shell, SwiftUI popover, AuxWindows, EdgeNotch + UsageCardView, HotKey), `Tests/VigilTests` (123 tests: state machine incl. multi-session/grace/interrupt/cancel and subagents, settings.json merger incl. missing/invalid/idempotent/removal and the v1 → v2 hook upgrade, status line parser with and without `rate_limits`, pace, reset rollover and threshold alerts, Czech plurals, status line installer (no previous / chained / exact restore / idempotent / invalid JSON) and the real `statusline.sh` against a socket, settings migration, PID liveness, socket + real `hook.sh` round trips, watchdog script, localization completeness).
+
+The Command Line Tools ship without SwiftUI's macro plugin, so views cannot use `@State`; view state lives in `@Observable` objects instead.
 
 - **Tests** use Swift Testing. On a Command-Line-Tools-only machine the testing macro plugin is not on the default path; `build.sh --test` passes `-plugin-path` for you. By hand: `swift test -Xswiftc -plugin-path -Xswiftc "$(xcode-select -p)/usr/lib/swift/host/plugins/testing"`.
 - **Localization**: `Resources/Localizable.xcstrings` is the source of truth (Xcode-compatible). Code calls `L("English text")`. `build.sh` generates `en.lproj`/`cs.lproj` from it and **fails the build** if the code uses a string that is missing or has no Czech translation.
@@ -176,4 +225,7 @@ Layout: `Sources/VigilCore` (StateMachine, HookServer, PowerController, Settings
 
 - The countdown notification cannot tick live (macOS does not update delivered notifications); the popover and the menu bar title show the real countdown.
 - Closing the lid needs `disablesleep`, which requires the sudoers rule; without it Vigil still holds idle-sleep assertions (lid-open case) and says so in the UI.
+- The usage numbers are only as fresh as the last status line update from a running Claude Code session; the card says how old they are.
+- While the usage card is pinned, Esc is claimed globally (see the Esc trade-off above).
+- `--snapshot` renders offscreen, where Liquid Glass and materials draw flat; the live card is translucent.
 - The lid-closed / real-sleep behavior (checklist steps 4-5) has to be verified by hand on your machine.

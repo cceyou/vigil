@@ -12,22 +12,25 @@ public enum HookServerError: Error, CustomStringConvertible {
     }
 }
 
-/// Owns the Unix domain socket hook.sh talks to. One JSON line per connection; the connection is closed
-/// as soon as the line is read so `nc` returns immediately.
+/// Owns the Unix domain socket hook.sh and statusline.sh talk to. One JSON line per connection; the connection
+/// is closed as soon as the line is read so `nc` returns immediately.
 public final class HookServer: @unchecked Sendable {
     public typealias Handler = @Sendable (HookEvent) -> Void
+    public typealias StatusLineHandler = @Sendable (StatusLineSnapshot) -> Void
 
     private let path: String
     private let handler: Handler
+    private let statusLineHandler: StatusLineHandler?
     private let queue = DispatchQueue(label: "cz.krystof.vigil.hookserver")
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
     private var connections: [Int32: Connection] = [:]
     private let maxLine = 256 * 1024
 
-    public init(socketPath: String, handler: @escaping Handler) {
+    public init(socketPath: String, onStatusLine: StatusLineHandler? = nil, handler: @escaping Handler) {
         self.path = socketPath
         self.handler = handler
+        self.statusLineHandler = onStatusLine
     }
 
     public var isRunning: Bool { queue.sync { listenFD >= 0 } }
@@ -114,8 +117,8 @@ public final class HookServer: @unchecked Sendable {
             var one: Int32 = 1
             setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
             _ = fcntl(client, F_SETFL, fcntl(client, F_GETFL) | O_NONBLOCK)
-            let connection = Connection(fd: client, queue: queue, maxLine: maxLine) { [weak self] event in
-                if let event { self?.handler(event) }
+            let connection = Connection(fd: client, queue: queue, maxLine: maxLine) { [weak self] line in
+                self?.dispatch(line)
             } onClose: { [weak self] fd in
                 self?.connections[fd] = nil
             }
@@ -124,17 +127,26 @@ public final class HookServer: @unchecked Sendable {
         }
     }
 
+    /// A status line message goes to the status line handler, everything else is a hook event.
+    private func dispatch(_ line: Data) {
+        if let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any], StatusLineParser.isStatusLine(object) {
+            if let snapshot = StatusLineParser.parse(object: object) { statusLineHandler?(snapshot) }
+            return
+        }
+        if let event = HookEventParser.parse(line) { handler(event) }
+    }
+
     private final class Connection {
         let fd: Int32
         private let source: DispatchSourceRead
         private var buffer = Data()
         private var finished = false
         private let maxLine: Int
-        private let deliver: (HookEvent?) -> Void
+        private let deliver: (Data) -> Void
         private let onClose: (Int32) -> Void
         private let queue: DispatchQueue
 
-        init(fd: Int32, queue: DispatchQueue, maxLine: Int, deliver: @escaping (HookEvent?) -> Void,
+        init(fd: Int32, queue: DispatchQueue, maxLine: Int, deliver: @escaping (Data) -> Void,
              onClose: @escaping (Int32) -> Void) {
             self.fd = fd
             self.queue = queue
@@ -169,7 +181,7 @@ public final class HookServer: @unchecked Sendable {
             finished = true
             if parse, !buffer.isEmpty, buffer.count <= maxLine {
                 let line = buffer.split(separator: 0x0A, maxSplits: 1, omittingEmptySubsequences: true).first ?? buffer[...]
-                deliver(HookEventParser.parse(Data(line)))
+                deliver(Data(line))
             }
             close()
             onClose(fd)
