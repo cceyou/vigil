@@ -12,6 +12,39 @@
         }
       }
     },
+    "%@: done in about %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: hotovo asi za %@"
+          }
+        }
+      }
+    },
+    "%d of %d": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d z %d"
+          }
+        }
+      }
+    },
+    "%d of %d (ze)": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d ze %d"
+          }
+        }
+      }
+    },
     "%d of %d checks passed": {
       "extractionState": "manual",
       "localizations": {
@@ -51,6 +84,28 @@
         }
       }
     },
+    "+%d steps": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+%d kroků"
+          }
+        }
+      }
+    },
+    "+%d steps (2-4)": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+%d kroky"
+          }
+        }
+      }
+    },
     "+1 h awake": {
       "extractionState": "manual",
       "localizations": {
@@ -58,6 +113,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "+1 h vzhůru"
+          }
+        }
+      }
+    },
+    "+1 step": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+1 krok"
           }
         }
       }
@@ -238,6 +304,17 @@
         }
       }
     },
+    "An estimate, not a promise. It never affects sleep.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jde o odhad, ne o slib. Na uspání nemá vliv."
+          }
+        }
+      }
+    },
     "Armed · waiting for Claude": {
       "extractionState": "manual",
       "localizations": {
@@ -271,6 +348,17 @@
         }
       }
     },
+    "Average error": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Průměrná chyba"
+          }
+        }
+      }
+    },
     "Awake for": {
       "extractionState": "manual",
       "localizations": {
@@ -278,6 +366,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vzhůru ještě"
+          }
+        }
+      }
+    },
+    "Based on %d similar tasks across projects": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Podle %d podobných úkolů napříč projekty"
+          }
+        }
+      }
+    },
+    "Based on %d similar tasks in the project": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Podle %d podobných úkolů v projektu"
+          }
+        }
+      }
+    },
+    "Basis": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Základ"
           }
         }
       }
@@ -513,6 +634,17 @@
         }
       }
     },
+    "Clear estimate history": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smazat historii odhadů"
+          }
+        }
+      }
+    },
     "Close": {
       "extractionState": "manual",
       "localizations": {
@@ -629,6 +761,17 @@
         }
       }
     },
+    "Difference": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozdíl"
+          }
+        }
+      }
+    },
     "Displays": {
       "extractionState": "manual",
       "localizations": {
@@ -658,6 +801,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Notch na okraji a využití"
+          }
+        }
+      }
+    },
+    "Elapsed time": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Čas běhu"
           }
         }
       }
@@ -695,6 +849,61 @@
         }
       }
     },
+    "Estimate": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odhad"
+          }
+        }
+      }
+    },
+    "Estimate accuracy": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přesnost odhadů"
+          }
+        }
+      }
+    },
+    "Estimate history": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Historie odhadů"
+          }
+        }
+      }
+    },
+    "Estimated remaining work time": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odhad zbývající doby práce"
+          }
+        }
+      }
+    },
+    "Estimates appear after the first finished turns.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odhady se objeví po prvních dokončených úkolech."
+          }
+        }
+      }
+    },
     "Failsafe: restore normal sleep and sleep after this long.": {
       "extractionState": "manual",
       "localizations": {
@@ -717,6 +926,17 @@
         }
       }
     },
+    "Finished tasks the estimate learns from: %d.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dokončené úkoly, ze kterých se odhad učí: %d."
+          }
+        }
+      }
+    },
     "General": {
       "extractionState": "manual",
       "localizations": {
@@ -724,6 +944,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Obecné"
+          }
+        }
+      }
+    },
+    "Getting less accurate": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zhoršuje se"
+          }
+        }
+      }
+    },
+    "Getting more accurate": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zpřesňuje se"
           }
         }
       }
@@ -801,6 +1043,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Historie"
+          }
+        }
+      }
+    },
+    "Hits in range": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trefa do rozsahu"
           }
         }
       }
@@ -1289,6 +1542,17 @@
         }
       }
     },
+    "No change": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beze změny"
+          }
+        }
+      }
+    },
     "No limits yet": {
       "extractionState": "manual",
       "localizations": {
@@ -1300,6 +1564,17 @@
         }
       }
     },
+    "No task list": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bez seznamu úkolů"
+          }
+        }
+      }
+    },
     "Normal": {
       "extractionState": "manual",
       "localizations": {
@@ -1307,6 +1582,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Normální"
+          }
+        }
+      }
+    },
+    "Not enough data": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Málo dat"
           }
         }
       }
@@ -1388,6 +1674,17 @@
         }
       }
     },
+    "Notify when Claude is almost done": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oznámit, když bude Claude skoro hotový"
+          }
+        }
+      }
+    },
     "Off": {
       "extractionState": "manual",
       "localizations": {
@@ -1417,6 +1714,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Na baterii pod touto úrovní Vigil přestane držet Mac vzhůru a při zavřeném víku ho uspí."
+          }
+        }
+      }
+    },
+    "Once per task, only when the estimate is reasonably confident.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jednou za úkol a jen když je odhad dost spolehlivý."
           }
         }
       }
@@ -1625,6 +1933,17 @@
         }
       }
     },
+    "Project": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projekt"
+          }
+        }
+      }
+    },
     "Purple": {
       "extractionState": "manual",
       "localizations": {
@@ -1665,6 +1984,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Připraveno"
+          }
+        }
+      }
+    },
+    "Remaining": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zbývá"
           }
         }
       }
@@ -1830,6 +2160,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Autotest"
+          }
+        }
+      }
+    },
+    "Sessions": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relace"
           }
         }
       }
@@ -2043,6 +2384,28 @@
         }
       }
     },
+    "Step %d of %d": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krok %d z %d"
+          }
+        }
+      }
+    },
+    "Step %d of %d (ze)": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krok %d ze %d"
+          }
+        }
+      }
+    },
     "Stuck subagent limit": {
       "extractionState": "manual",
       "localizations": {
@@ -2098,6 +2461,17 @@
         }
       }
     },
+    "The estimate is a range with a confidence level. It never affects sleep.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odhad je vždy rozsah s mírou jistoty. Na uspání nemá vliv."
+          }
+        }
+      }
+    },
     "The fake hook event did not arrive": {
       "extractionState": "manual",
       "localizations": {
@@ -2149,6 +2523,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hooky jsou zastaralé. Aktualizujte je a restartujte běžící relace Claude Code."
+          }
+        }
+      }
+    },
+    "The island shows while Claude works": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ostrov během práce ukazuje"
           }
         }
       }
@@ -2230,6 +2615,28 @@
         }
       }
     },
+    "Took": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trvalo"
+          }
+        }
+      }
+    },
+    "Trend": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trend"
+          }
+        }
+      }
+    },
     "Turn off": {
       "extractionState": "manual",
       "localizations": {
@@ -2292,6 +2699,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Oznámení o využití"
+          }
+        }
+      }
+    },
+    "Usually another": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obvykle ještě"
           }
         }
       }
@@ -2417,6 +2835,17 @@
         }
       }
     },
+    "When": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kdy"
+          }
+        }
+      }
+    },
     "When Claude is waiting for an answer": {
       "extractionState": "manual",
       "localizations": {
@@ -2435,6 +2864,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Při otevřeném víku Vigil obnoví běžný spánek, ale uspání nevynutí."
+          }
+        }
+      }
+    },
+    "Work-time estimate": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odhad doby práce"
           }
         }
       }
@@ -2494,6 +2934,17 @@
         }
       }
     },
+    "actual inside the estimate": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "skutečnost uvnitř odhadu"
+          }
+        }
+      }
+    },
     "auto-compact soon": {
       "extractionState": "manual",
       "localizations": {
@@ -2501,6 +2952,50 @@
           "stringUnit": {
             "state": "translated",
             "value": "brzy auto-compact"
+          }
+        }
+      }
+    },
+    "context %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kontext %@"
+          }
+        }
+      }
+    },
+    "done around": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hotovo asi v"
+          }
+        }
+      }
+    },
+    "history": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "historie"
+          }
+        }
+      }
+    },
+    "hit": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "trefa"
           }
         }
       }
@@ -2534,6 +3029,72 @@
           "stringUnit": {
             "state": "translated",
             "value": "hook.sh se u událostí subagenta choval chybně"
+          }
+        }
+      }
+    },
+    "last %d turns": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "posledních %d úkolů"
+          }
+        }
+      }
+    },
+    "last %d turns (2-4)": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "poslední %d úkoly"
+          }
+        }
+      }
+    },
+    "last turn": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "poslední úkol"
+          }
+        }
+      }
+    },
+    "last week ±%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "minulý týden ±%@"
+          }
+        }
+      }
+    },
+    "needs two weeks of estimates": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "potřebuje odhady ze dvou týdnů"
+          }
+        }
+      }
+    },
+    "no estimate": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bez odhadu"
           }
         }
       }
@@ -2615,6 +3176,17 @@
         }
       }
     },
+    "soon": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "brzy"
+          }
+        }
+      }
+    },
     "statusline.sh misbehaved (exit %d, no output)": {
       "extractionState": "manual",
       "localizations": {
@@ -2622,6 +3194,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "statusline.sh selhal (exit %d, žádný výstup)"
+          }
+        }
+      }
+    },
+    "step %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "krok %@"
           }
         }
       }
@@ -2644,6 +3227,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "sudo by chtělo heslo. Nainstalujte oprávnění ke spánku."
+          }
+        }
+      }
+    },
+    "tasks %d": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "úkoly %d"
           }
         }
       }

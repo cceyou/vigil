@@ -224,6 +224,11 @@ public enum HookKind: String, Codable, Equatable, Sendable {
     case subagentStart = "SubagentStart"
     /// A subagent finished; carries agent_id.
     case subagentStop = "SubagentStop"
+    /// Claude added an item to its task list (task_id, task_subject). ETA only; the state machine ignores it.
+    /// Exit code 2 from this hook would cancel the task, so hook.sh must always exit 0.
+    case taskCreated = "TaskCreated"
+    /// Claude completed an item of its task list. ETA only; ignored by the state machine.
+    case taskCompleted = "TaskCompleted"
     /// Used by the self-test round trip; never reaches the state machine.
     case selfTest = "VigilSelfTest"
 }
@@ -238,9 +243,14 @@ public struct HookEvent: Equatable, Sendable {
     public var agentType: String?
     /// Notification hooks only (`permission_prompt`, `idle_prompt`, ...).
     public var notificationType: String?
+    /// PostToolUse only.
+    public var toolName: String?
+    /// Task list changes (TaskCreated/TaskCompleted, or TaskCreate/TaskUpdate/TodoWrite tool calls). ETA only.
+    public var taskSignals: [TaskSignal]
 
     public init(kind: HookKind, sessionID: String, cwd: String? = nil, pid: Int32? = nil,
-                agentID: String? = nil, agentType: String? = nil, notificationType: String? = nil) {
+                agentID: String? = nil, agentType: String? = nil, notificationType: String? = nil,
+                toolName: String? = nil, taskSignals: [TaskSignal] = []) {
         self.kind = kind
         self.sessionID = sessionID
         self.cwd = cwd
@@ -248,6 +258,8 @@ public struct HookEvent: Equatable, Sendable {
         self.agentID = agentID
         self.agentType = agentType
         self.notificationType = notificationType
+        self.toolName = toolName
+        self.taskSignals = taskSignals
     }
 }
 
@@ -414,6 +426,11 @@ public struct StateMachine: Equatable {
 
         switch hook.kind {
         case .selfTest:
+            return
+
+        case .taskCreated, .taskCompleted:
+            // Task list progress only feeds the (information-only) work-time estimate. It must never change
+            // whether the Mac stays awake, so the state machine does not look at it at all.
             return
 
         case .sessionEnd:

@@ -28,7 +28,9 @@ let package = Package(
         ),
         .testTarget(
             name: "VigilTests",
-            dependencies: ["VigilCore"]
+            dependencies: ["VigilCore"],
+            // Real hook payloads recorded on this machine (the task parsers are tested against them).
+            resources: [.copy("Fixtures")]
         ),
     ],
     swiftLanguageVersions: [.v5]

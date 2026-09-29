@@ -77,6 +77,31 @@ struct SettingsView: View {
             .disabled(model.settings.config.notificationPolicy != .keepAwake)
         }
 
+        group(L("Work-time estimate")) {
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("The island shows while Claude works")).font(.system(size: 13, weight: .medium))
+                    Text(L("The estimate is a range with a confidence level. It never affects sleep."))
+                        .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Picker("", selection: ui(\.islandContent)) {
+                    Text(L("Elapsed time")).tag(IslandContent.elapsed)
+                    Text(L("Estimate")).tag(IslandContent.estimate)
+                }
+                .labelsHidden().pickerStyle(.segmented)
+            }
+            RowDivider()
+            SettingRow(title: L("Notify when Claude is almost done"),
+                       subtitle: L("Once per task, only when the estimate is reasonably confident.")) {
+                Toggle("", isOn: ui(\.etaNotification)).labelsHidden().toggleStyle(.switch)
+            }
+            RowDivider()
+            SettingRow(title: L("Estimate history"), subtitle: L("Finished tasks the estimate learns from: %d.", model.turns.count)) {
+                ActionButton(title: L("Clear estimate history")) { model.clearEtaHistory() }
+                    .disabled(model.turns.isEmpty)
+            }
+        }
+
         group(L("Look")) {
             SettingRow(title: L("Accent color")) {
                 HStack(spacing: 10) {

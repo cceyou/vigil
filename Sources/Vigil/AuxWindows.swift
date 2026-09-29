@@ -28,7 +28,8 @@ final class AuxWindowManager {
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = .black
         window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: kind == .settings ? 440 : 400, height: kind == .settings ? 640 : 520))
+        // History is wider: the estimate-accuracy table has six columns.
+        window.setContentSize(NSSize(width: kind == .selfTest ? 400 : kind == .history ? 480 : 440, height: kind == .settings ? 640 : 560))
         window.contentMinSize = NSSize(width: 380, height: 320)
         window.center()
         window.setFrameAutosaveName("Vigil.\(kind.rawValue)")

@@ -85,7 +85,7 @@ struct IslandView: View {
 
     private var text: String {
         switch state {
-        case .working(let elapsed): return Format.clock(elapsed)
+        case .working(let elapsed, let eta): return eta?.remainingText ?? Format.clock(elapsed)
         case .countdown(let remaining): return L("Sleeps in %@", Format.clock(remaining))
         case .waiting: return L("Waiting")
         case .idle: return L("Ready")
@@ -96,7 +96,8 @@ struct IslandView: View {
 
     private var color: Color {
         switch state {
-        case .working, .countdown: return accent
+        case .working(_, let eta): return eta.map { $0.confident ? accent : Color.secondary } ?? accent
+        case .countdown: return accent
         case .waiting: return Theme.waiting
         case .idle, .off, .paused: return .secondary
         }
@@ -245,8 +246,20 @@ struct SessionCard: View {
         return model.machine.awakeHeld ? model.awakeElapsed : nil
     }
 
+    /// Only while the session works; the countdown and idle states keep their own look.
+    private var eta: SessionEta? {
+        guard let session, session.isWorking, model.phase == .working else { return nil }
+        return model.eta(for: session.id)
+    }
+
+    private var steps: SleepTrack.Steps? {
+        guard let eta, let total = eta.total, let done = eta.done else { return nil }
+        return SleepTrack.Steps(done: done, total: total, progress: eta.progress ?? Double(done) / Double(max(1, total)))
+    }
+
     var body: some View {
         let accent = model.accent
+        let eta = self.eta
         Card(padding: 20) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
@@ -269,21 +282,39 @@ struct SessionCard: View {
                     .contentTransition(.numericText())
                     .padding(.top, 2)
 
-                SleepTrack(progress: model.sleepProgress, accent: accent)
+                if let eta {
+                    StepRow(eta: eta, accent: accent)
+                        .padding(.top, 16)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                // While there is an estimate the track is about the work, not about sleep: task segments, or the
+                // indeterminate shimmer without a task list; it ends in a flag.
+                SleepTrack(progress: eta == nil ? model.sleepProgress : nil, accent: accent, steps: steps, finish: eta != nil)
                     .padding(.top, 18)
 
-                HStack(alignment: .firstTextBaseline) {
+                HStack(alignment: .top, spacing: 8) {
                     if let running {
-                        FooterValue(label: L("Running"), value: Format.clock(running))
+                        FooterColumn(label: L("Running"), value: Format.clock(running), alignment: .leading)
+                    } else {
+                        Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
                     }
-                    Spacer(minLength: 8)
+                    if let eta {
+                        // History is only "usually": its value stays secondary. Low confidence is secondary too.
+                        FooterColumn(label: eta.fromHistory ? L("Usually another") : L("Remaining"), value: eta.remainingText,
+                                     alignment: .center, color: eta.fromHistory || !eta.confident ? .secondary : accent)
+                            .transition(.opacity)
+                    }
                     if let r = model.countdownRemaining, model.phase == .countdown {
-                        FooterValue(label: L("Sleeps in"), value: Format.clock(r))
+                        FooterColumn(label: L("Sleeps in"), value: Format.clock(r), alignment: .trailing)
                     } else if let r = model.awakeRemaining {
-                        FooterValue(label: L("Awake for"), value: Format.clock(r))
+                        FooterColumn(label: L("Awake for"), value: Format.clock(r), alignment: .trailing)
+                    } else {
+                        Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
                     }
                 }
-                .padding(.top, 12)
+                .padding(.top, 14)
+                .opacity(running == nil && model.awakeRemaining == nil && model.phase != .countdown ? 0 : 1)
 
                 if model.phase == .countdown {
                     HStack {
@@ -299,23 +330,124 @@ struct SessionCard: View {
     }
 }
 
-struct FooterValue: View {
+/// Label above a big value; the footer has up to three (left, center, right).
+struct FooterColumn: View {
     let label: String
     let value: String
+    let alignment: HorizontalAlignment
+    var color: Color = .primary
+
+    private var frameAlignment: Alignment {
+        alignment == .leading ? .leading : alignment == .trailing ? .trailing : .center
+    }
+
     var body: some View {
-        HStack(spacing: 4) {
-            Text(label).foregroundStyle(.secondary)
-            Text(value).foregroundStyle(.primary).monospacedDigit().contentTransition(.numericText())
+        VStack(alignment: alignment, spacing: 3) {
+            Text(label).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 20, weight: .bold))
+                .monospacedDigit()
+                .foregroundStyle(color)
+                .contentTransition(.numericText())
+                .minimumScaleFactor(0.7)
         }
-        .font(.system(size: 13, weight: .medium))
         .lineLimit(1)
+        .frame(maxWidth: .infinity, alignment: frameAlignment)
+    }
+}
+
+/// The rounded box under the title: the task list step, or what the history estimate is based on.
+struct StepRow: View {
+    let eta: SessionEta
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if eta.fromHistory {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+            } else {
+                StepSpinner(accent: accent).frame(width: 18, height: 18)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                if eta.fromHistory {
+                    Text(L("No task list")).font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(Format.historyBasis(eta.historyCount ?? 0, eta.historyScope ?? .project))
+                        .font(.system(size: 14, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    HStack(spacing: 6) {
+                        Text(stepLine).font(.system(size: 12)).lineLimit(1).minimumScaleFactor(0.85)
+                        if let growth = eta.growth {
+                            Text(Format.addedSteps(growth))
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(accent)
+                                .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                        }
+                    }
+                    if let subject = eta.subject {
+                        Text(subject)
+                            .font(.system(size: 14, weight: .semibold))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(Theme.inset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .animation(.smooth, value: eta.growth)
+    }
+
+    /// "Krok 4 ze 7 · hotovo asi v **21:15** (±5 min)": the time in primary, the rest in secondary.
+    private var stepLine: AttributedString {
+        var prefix = AttributedString(Format.stepOf(eta.step ?? 1, eta.total ?? 1) + " · " + L("done around") + " ")
+        prefix.foregroundColor = .secondary
+        var time = AttributedString(eta.finishAt.formatted(date: .omitted, time: .shortened))
+        time.foregroundColor = eta.confident ? .primary : .secondary
+        time.font = .system(size: 12, weight: .semibold)
+        var suffix = AttributedString(" (\(eta.plusMinus))")
+        suffix.foregroundColor = .secondary
+        return prefix + time + suffix
+    }
+}
+
+/// A small ring that spins while Claude works through its task list.
+struct StepSpinner: View {
+    let accent: Color
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let angle = (t / 1.1).truncatingRemainder(dividingBy: 1) * 360
+            ZStack {
+                Circle().stroke(Theme.track, lineWidth: 2.5)
+                Circle().trim(from: 0, to: 0.3)
+                    .stroke(accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .rotationEffect(.degrees(angle))
+            }
+        }
     }
 }
 
 /// bolt ─── track ─── moon: progress toward sleep. `nil` progress: indeterminate, a slow shimmer moves along.
+/// With a task list the track shows the list instead: one segment per task, ending in a flag.
 struct SleepTrack: View {
+    struct Steps: Equatable {
+        var done: Int
+        var total: Int
+        /// done + the current task's share, 0...1.
+        var progress: Double
+    }
+
     let progress: Double?
     let accent: Color
+    var steps: Steps? = nil
+    /// Ends in a flag (work finishes) instead of the moon (Mac sleeps).
+    var finish = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -323,8 +455,16 @@ struct SleepTrack: View {
             GeometryReader { g in
                 let w = g.size.width
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.track).frame(height: 6)
-                    if let progress {
+                    if let steps {
+                        segments(steps, width: w)
+                    } else {
+                        Capsule().fill(Theme.track).frame(height: 6)
+                    }
+                    if let steps {
+                        Circle().fill(.white).frame(width: 14, height: 14)
+                            .shadow(color: .black.opacity(0.4), radius: 2)
+                            .offset(x: min(w - 14, max(0, w * steps.progress - 7)))
+                    } else if let progress {
                         Capsule().fill(accent).frame(width: max(6, w * progress), height: 6)
                         Circle().fill(.white).frame(width: 14, height: 14)
                             .shadow(color: .black.opacity(0.4), radius: 2)
@@ -346,9 +486,33 @@ struct SleepTrack: View {
                 }
                 .frame(height: 14)
                 .animation(.linear(duration: 1), value: progress)
+                .animation(.spring(response: 0.6, dampingFraction: 0.85), value: steps)
             }
             .frame(height: 14)
-            Image(systemName: "moon.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+            Image(systemName: finish || steps != nil ? "flag" : "moon.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// One capsule per task with thin gaps; done tasks filled, the current one filled by its share.
+    private func segments(_ steps: Steps, width: CGFloat) -> some View {
+        let n = max(1, steps.total)
+        let gap: CGFloat = n > 20 ? 2 : 3
+        let segment = max(2, (width - gap * CGFloat(n - 1)) / CGFloat(n))
+        let partial = steps.progress * Double(n) - Double(steps.done)
+        return HStack(spacing: gap) {
+            ForEach(0..<n, id: \.self) { i in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.track)
+                    if i < steps.done {
+                        Capsule().fill(accent)
+                    } else if i == steps.done, partial > 0 {
+                        Capsule().fill(accent).frame(width: max(4, segment * min(1, partial)))
+                    }
+                }
+                .frame(width: segment, height: 6)
+            }
         }
     }
 }

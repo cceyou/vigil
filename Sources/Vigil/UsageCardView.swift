@@ -8,6 +8,11 @@ struct UsageCardSession: Identifiable, Equatable {
     var model: String?
     var contextPercent: Double?
     var working: Bool
+    /// "4/7" when Claude keeps a task list.
+    var step: String? = nil
+    /// Work-time estimate ("~12 min", "5–15 min").
+    var eta: String? = nil
+    var etaConfident = false
 }
 
 /// Presentation state of the usage card (shared by the notch hover, the card itself and the shortcut).
@@ -226,27 +231,43 @@ struct UsageBar: View {
     }
 }
 
+/// Context ring, project, "Opus · krok 4/7 · kontext 42 %", and the estimate on the right.
 private struct SessionLine: View {
     let session: UsageCardSession
+
+    private var subtitle: String {
+        var parts = [session.model ?? "Claude Code"]
+        if let step = session.step { parts.append(L("step %@", step)) }
+        if let ctx = session.contextPercent {
+            parts.append(L("context %@", "\(Int(ctx.rounded())) %"))
+            if ctx >= 80 { parts.append(L("auto-compact soon")) }
+        }
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
+            Group {
+                if let ctx = session.contextPercent {
+                    ContextRing(percent: ctx).help(L("Context window used"))
+                } else {
+                    Circle().stroke(.primary.opacity(0.14), lineWidth: 3).frame(width: 22, height: 22)
+                }
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.project).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                Text(session.model ?? "Claude Code").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 6)
-            if let ctx = session.contextPercent {
-                VStack(alignment: .trailing, spacing: 1) {
-                    HStack(spacing: 6) {
-                        Text("\(Int(ctx.rounded())) %").font(.system(size: 11, weight: .medium, design: .rounded)).monospacedDigit()
-                            .foregroundStyle(.secondary)
-                        ContextRing(percent: ctx)
-                    }
-                    if ctx >= 80 {
-                        Text(L("auto-compact soon")).font(.system(size: 10)).foregroundStyle(UsageCardView.warning)
-                    }
-                }
-                .help(L("Context window used"))
+            if let eta = session.eta {
+                Text(eta)
+                    .font(.system(size: 13, weight: session.etaConfident ? .semibold : .medium, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(session.etaConfident ? .primary : .secondary)
+                    .multilineTextAlignment(.trailing)
+                    .contentTransition(.numericText())
+                    .help(L("Estimated remaining work time"))
             }
         }
     }
@@ -262,7 +283,7 @@ struct ContextRing: View {
                 .stroke(percent >= 80 ? UsageCardView.warning : Color.primary, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
-        .frame(width: 18, height: 18)
+        .frame(width: 22, height: 22)
         .animation(.smooth, value: f)
     }
 }

@@ -104,6 +104,33 @@ import Testing
         #expect(box.all.first?.sessionID == "s-perm")
     }
 
+    /// TaskCreated/TaskCompleted CANCEL the task when a hook exits 2. hook.sh must exit 0 and stay silent for
+    /// every input, whether Vigil is listening or not.
+    @Test func taskHooksAlwaysExitZeroEvenWithGarbage() throws {
+        let home = makeTempDir("vigil-home"); defer { try? FileManager.default.removeItem(at: home) }
+        try HookInstaller(paths: VigilPaths(home: home)).installScript()
+        let sock = socketPath()
+        let box = EventBox()
+        let server = HookServer(socketPath: sock) { box.add($0) }
+        try server.start(); defer { server.stop() }
+        let garbage = ["", "\u{0}\u{1}\u{2}binary\u{FF}", "{\"task_id\":", "not json at all", "[]", "null",
+                       String(repeating: "x", count: 300_000), #"{"task_id":"1","task_subject":"ok","session_id":"s-task"}"#]
+        for kind in [HookKind.taskCreated, .taskCompleted] {
+            for input in garbage {
+                for socket in [sock, "/tmp/vgl-nonexistent.sock"] {
+                    let r = Shell.run("/bin/sh", ["-c", ClaudeSettingsMerger.command(for: kind)], stdin: input,
+                                      environment: ["HOME": home.path, "PATH": "/usr/bin:/bin", "VIGIL_SOCKET": socket], timeout: 5)
+                    #expect(r.status == 0, "\(kind) with \(input.prefix(20).debugDescription) exited \(r.status)")
+                    #expect(r.stdout.isEmpty && r.stderr.isEmpty)
+                }
+            }
+        }
+        // Only the two valid payloads arrived, as task signals.
+        #expect(box.waitForCount(2))
+        #expect(box.all.map(\.kind) == [.taskCreated, .taskCompleted])
+        #expect(box.all.first?.taskSignals == [.created(id: "1", subject: "ok")])
+    }
+
     @Test func multilinePayloadStillArrivesAsOneEvent() throws {
         let dir = makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
         let sock = socketPath()

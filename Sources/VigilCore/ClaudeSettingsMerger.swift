@@ -9,8 +9,10 @@ public enum ClaudeSettingsMerger {
     /// "working" once the user has answered (Claude Code fires no UserPromptSubmit in that case).
     /// Notification (by its notification_type) and PermissionRequest mark a session as waiting for the user.
     /// SubagentStart/SubagentStop keep a session busy while subagents run after the main agent's Stop.
+    /// TaskCreated/TaskCompleted feed the work-time estimate only (exit code 2 would cancel the task; hook.sh
+    /// always exits 0).
     public static let events: [HookKind] = [.sessionStart, .userPromptSubmit, .stop, .notification, .sessionEnd, .postToolUse,
-                                            .permissionRequest, .subagentStart, .subagentStop]
+                                            .permissionRequest, .subagentStart, .subagentStop, .taskCreated, .taskCompleted]
 
     /// Tool events take a matcher; "*" means every tool.
     static func matcher(for kind: HookKind) -> String? {
@@ -19,8 +21,8 @@ public enum ClaudeSettingsMerger {
 
     /// Version of the hook set. Bump it whenever `events`, a matcher or the command line changes, so an
     /// existing install shows up as outdated. Entries without a stamp are version 1.
-    /// 3: PermissionRequest, PostToolUse matcher "*".
-    public static let version = 3
+    /// 3: PermissionRequest, PostToolUse matcher "*". 4: TaskCreated, TaskCompleted.
+    public static let version = 4
     private static let versionFlag = "--vigil-hooks="
 
     public enum Status: Equatable, Sendable {

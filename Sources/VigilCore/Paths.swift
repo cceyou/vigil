@@ -21,6 +21,8 @@ public struct VigilPaths: Sendable {
     public var statusLineOriginal: URL { supportDir.appendingPathComponent("statusline.original.json") }
     /// The original status line command, run by the wrapper with the same stdin (empty: none).
     public var statusLineChain: URL { supportDir.appendingPathComponent("statusline.chain") }
+    /// Finished turns (UserPromptSubmit → Stop) the work-time estimate learns from.
+    public var turns: URL { supportDir.appendingPathComponent("turns.json") }
     /// Last known Claude usage (rate limits, per-session model and context).
     public var usage: URL { supportDir.appendingPathComponent("usage.json") }
     public var logDir: URL { supportDir.appendingPathComponent("logs", isDirectory: true) }

@@ -17,7 +17,9 @@ public enum HookEventParser {
         let agentID = (payload["agent_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         let agentType = payload["agent_type"] as? String
         let notificationType = (payload["notification_type"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let toolName = (payload["tool_name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         return HookEvent(kind: kind, sessionID: sessionID, cwd: cwd, pid: pid, agentID: agentID, agentType: agentType,
-                         notificationType: notificationType)
+                         notificationType: notificationType, toolName: toolName,
+                         taskSignals: TaskSignalParser.parse(kind: kind, payload: payload))
     }
 }

@@ -106,6 +106,15 @@ public final class Notifier: NSObject, UNUserNotificationCenterDelegate, @unchec
         center.add(UNNotificationRequest(identifier: "vigil.waitTimeout", content: content, trigger: nil))
     }
 
+    /// The work-time estimate says Claude is almost done ("rasinova-residence: hotovo asi za 5 min").
+    public func postEta(project: String, remaining: String) {
+        guard let center else { return }
+        let content = UNMutableNotificationContent()
+        content.title = L("%@: done in about %@", project, remaining)
+        content.body = L("An estimate, not a promise. It never affects sleep.")
+        center.add(UNNotificationRequest(identifier: "vigil.eta.\(project)", content: content, trigger: nil))
+    }
+
     /// Claude usage crossed a threshold or a window reset.
     public func postUsage(_ alert: UsageAlert, resetsAt: Date?) {
         guard let center else { return }

@@ -2,6 +2,14 @@ import Foundation
 
 public enum AccentChoice: String, Codable, CaseIterable, Sendable { case green, blue, orange, purple }
 
+/// What the island shows while Claude works.
+public enum IslandContent: String, Codable, CaseIterable, Sendable {
+    /// How long Claude has been working (default).
+    case elapsed
+    /// The work-time estimate ("~12 min"); falls back to the elapsed time when there is none.
+    case estimate
+}
+
 public enum NotchDisplays: String, Codable, CaseIterable, Sendable {
     /// One notch on every display.
     case all
@@ -36,6 +44,9 @@ public struct UISettings: Codable, Equatable, Sendable {
     public var shortcut = HotKeySpec()
     public var accent = AccentChoice.green
     public var usageNotifications = true
+    public var islandContent = IslandContent.elapsed
+    /// "Almost done" notification from the work-time estimate. Off by default.
+    public var etaNotification = false
 
     public init() {}
 
@@ -50,6 +61,8 @@ public struct UISettings: Codable, Equatable, Sendable {
         shortcut = try c.decodeIfPresent(HotKeySpec.self, forKey: .shortcut) ?? d.shortcut
         accent = (try? c.decodeIfPresent(AccentChoice.self, forKey: .accent)) ?? d.accent
         usageNotifications = try c.decodeIfPresent(Bool.self, forKey: .usageNotifications) ?? d.usageNotifications
+        islandContent = (try? c.decodeIfPresent(IslandContent.self, forKey: .islandContent)) ?? d.islandContent
+        etaNotification = try c.decodeIfPresent(Bool.self, forKey: .etaNotification) ?? d.etaNotification
     }
 }
 

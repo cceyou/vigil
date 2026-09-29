@@ -12,7 +12,8 @@ enum AuxWindow: String, CaseIterable {
 /// What the island at the top of the popover (and the menu bar icon) shows, by priority.
 enum IslandState: Equatable {
     case countdown(TimeInterval)
-    case working(TimeInterval)
+    /// Elapsed time, plus the estimate when the island is set to show it.
+    case working(TimeInterval, eta: SessionEta? = nil)
     case waiting
     case idle
     case off
@@ -65,14 +66,21 @@ final class AppModel {
     private(set) var hooksJustInstalled = false
     private(set) var dryRunLog: [String] = []
     private(set) var usage: UsageState
+    /// Work-time estimate per running turn (information only; the state machine never sees it).
+    private(set) var tracker = TurnTracker()
+    /// Finished turns, newest first: what the estimate learns from and is scored against.
+    private(set) var turns: [TurnRecord]
     /// Index of the working-session page shown in the popover.
     var sessionPage: String?
+    /// History window tab: sessions or estimate accuracy.
+    var historyTab = HistoryTab.sessions
 
     // MARK: internals
     @ObservationIgnored let paths: VigilPaths
     @ObservationIgnored private let store = SettingsStore()
     @ObservationIgnored private let historyStore: HistoryStore
     @ObservationIgnored private let usageStore: UsageStore
+    @ObservationIgnored private let turnStore: TurnStore
     @ObservationIgnored private let realPower: SystemPowerController
     @ObservationIgnored private let dryPower = DryRunPowerController()
     @ObservationIgnored private let notifier = Notifier()
@@ -99,6 +107,8 @@ final class AppModel {
         self.history = historyStore.load()
         self.usageStore = UsageStore(url: paths.usage)
         self.usage = usageStore.load()
+        self.turnStore = TurnStore(url: paths.turns)
+        self.turns = turnStore.load()
         self.realPower = SystemPowerController(paths: paths)
     }
 
@@ -242,8 +252,15 @@ final class AppModel {
     private func receive(_ event: HookEvent) {
         guard !SelfTest.isSelfTestEvent(event) else { return }
         let agent = event.agentID.map { " agent=\(event.agentType ?? "?")/\($0.prefix(8))" } ?? ""
-        log.info("hook \(event.kind.rawValue) session=\(event.sessionID.prefix(8)) pid=\(event.pid.map(String.init) ?? "-")\(agent)")
+        let tasks = event.taskSignals.isEmpty ? "" : " tasks=\(event.taskSignals.count)"
+        log.info("hook \(event.kind.rawValue) session=\(event.sessionID.prefix(8)) pid=\(event.pid.map(String.init) ?? "-")\(agent)\(tasks)")
         send(.hook(event))
+        // The estimate follows the same events but is kept apart from the state machine on purpose.
+        if let record = tracker.handle(event, at: Date()) {
+            turns = turnStore.append(record)
+            log.info("turn finished: \(record.project) \(Int(record.activeDuration)) s active, \(record.taskCount) tasks, "
+                     + "\(record.subagentCount) subagents, \(record.checkpoints.count) checkpoints")
+        }
     }
 
     /// A status line update from statusline.sh (self-test ones only go to the probe).
@@ -254,6 +271,13 @@ final class AppModel {
         usageStore.save(usage)
         if !hadLimits && usage.hasRateLimits { log.info("usage: first rate_limits received") }
         post(alerts)
+    }
+
+    private func postEtaNotifications() {
+        for due in etaNotificationsDue() where tracker.markNotified(due.sessionID) {
+            log.info("eta notification: \(due.project) \(due.text)")
+            notifier.postEta(project: due.project, remaining: due.text)
+        }
     }
 
     private func post(_ alerts: [UsageAlert]) {
@@ -271,6 +295,8 @@ final class AppModel {
     private func tick() {
         tickCount += 1
         send(.tick)
+        tracker.tick(at: Date(), history: turns)
+        postEtaNotifications()
         let rolled = usage.rollover(at: Date())
         if !rolled.isEmpty { usageStore.save(usage); post(rolled) }
         if tickCount % 10 == 0 { maintenance() }
@@ -283,6 +309,7 @@ final class AppModel {
         if !dead.isEmpty {
             log.info("dropping \(dead.count) dead session(s)")
             send(.sessionsDied(dead))
+            tracker.discard(dead)
         }
         if !settings.dryRun { jobs?.yield(.reconcile) }
         if server?.isRunning != true { startServer() }
@@ -378,7 +405,7 @@ final class AppModel {
         case .countdown: return .countdown(countdownRemaining ?? 0)
         case .working:
             if !waitingSessions.isEmpty { return .waiting }
-            return .working(workingSessions.isEmpty ? awakeElapsed : workingElapsed)
+            return .working(workingSessions.isEmpty ? awakeElapsed : workingElapsed, eta: islandEta)
         case .armed: return waitingSessions.isEmpty ? .idle : .waiting
         }
     }
@@ -436,8 +463,11 @@ final class AppModel {
         var seen = Set<String>()
         for s in machine.sessions.sorted(by: { $0.lastEventAt > $1.lastEventAt }) {
             let info = usage.sessions[s.id]
+            let eta = eta(for: s.id)
             list.append(UsageCardSession(id: s.id, project: s.projectName, model: info?.model,
-                                         contextPercent: info?.contextPercent, working: s.isWorking))
+                                         contextPercent: info?.contextPercent, working: s.isWorking,
+                                         step: eta?.step.flatMap { step in eta?.total.map { "\(step)/\($0)" } },
+                                         eta: eta?.remainingText, etaConfident: eta?.confident ?? false))
             seen.insert(s.id)
         }
         for (id, info) in usage.recentSessions(at: now, within: 600) where !seen.contains(id) {
@@ -500,6 +530,11 @@ final class AppModel {
     }
 
     func markOnboardingSeen() { update { $0.hasSeenOnboarding = true } }
+
+    func clearEtaHistory() {
+        turnStore.clear()
+        turns = []
+    }
 
     func clearHistory() {
         historyStore.clear()
@@ -678,6 +713,19 @@ final class AppModel {
     }
 
     func previewSettings(_ mutate: (inout AppSettings) -> Void) { mutate(&settings) }
+
+    /// Snapshots only: replaces the estimate history and replays hook events through a fresh tracker.
+    func previewEta(turns: [TurnRecord], events: [(HookEvent, Date)], at time: Date) {
+        self.turns = turns
+        var t = TurnTracker()
+        for (event, date) in events.sorted(by: { $0.1 < $1.1 }) {
+            _ = t.handle(event, at: date)
+            t.tick(at: date, history: turns)
+        }
+        t.tick(at: time, history: turns)
+        tracker = t
+        now = time
+    }
 
     /// Builds a fresh state machine in the requested phase (snapshots only; no side effects are executed).
     func previewSessions(phase: Phase) {

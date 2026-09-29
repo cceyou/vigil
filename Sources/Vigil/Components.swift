@@ -9,6 +9,8 @@ enum Theme {
     static let card = Color(hex: 0x1C1C1E)
     static let track = Color(hex: 0x3A3A3C)
     static let outline = Color(hex: 0x2C2C2E)
+    /// Boxes inside a card (the step row).
+    static let inset = Color(hex: 0x2C2C2E)
     static let waiting = Color(hex: 0xFF9F0A)
     static let cardRadius: CGFloat = 28
     static let tileRadius: CGFloat = 20

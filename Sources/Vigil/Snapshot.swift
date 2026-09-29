@@ -31,7 +31,20 @@ enum Snapshot {
             Shot(name: "popover-countdown", width: nil, apply: { $0.previewScenario(.countdown) }, view: popover),
             Shot(name: "popover-keepawake", width: nil, apply: { $0.previewScenario(.keepAwake) }, view: popover),
             Shot(name: "popover-idle-setup", width: nil, apply: { $0.previewScenario(.idleSetup) }, view: popover),
-            Shot(name: "window-history", width: 440, apply: { $0.previewScenario(.working) }, view: window(.history)),
+            Shot(name: "window-history", width: 440, apply: { $0.previewScenario(.working); $0.historyTab = .sessions }, view: window(.history)),
+            Shot(name: "popover-eta-tasks", width: nil, apply: { $0.previewScenario(.etaTasks) }, view: popover),
+            Shot(name: "popover-eta-history", width: nil, apply: { $0.previewScenario(.etaHistory) }, view: popover),
+            Shot(name: "popover-eta-island", width: nil, apply: {
+                $0.previewSettings { $0.ui.islandContent = .estimate }
+                $0.previewScenario(.etaHistory)
+            }, view: popover),
+            Shot(name: "card-usage-eta", width: nil, apply: {
+                $0.previewSettings { $0.ui.islandContent = .elapsed }
+                $0.previewScenario(.etaTasks); $0.previewUsage(.data)
+            }, view: usageCard),
+            Shot(name: "window-history-accuracy", width: 480, apply: {
+                $0.previewScenario(.etaTasks); $0.historyTab = .accuracy
+            }, view: { AnyView(AuxWindowRoot(model: model, kind: .history).frame(width: 480)) }),
             Shot(name: "window-settings", width: 440, apply: { $0.previewScenario(.working) }, view: window(.settings)),
             Shot(name: "window-selftest", width: 440, apply: { $0.previewScenario(.working) }, view: window(.selfTest)),
             Shot(name: "card-usage", width: nil, apply: { $0.previewScenario(.working); $0.previewUsage(.data) }, view: usageCard),
@@ -70,7 +83,7 @@ enum Snapshot {
     }
 }
 
-enum PreviewScenario { case working, multi, waiting, countdown, keepAwake, idleSetup }
+enum PreviewScenario { case working, multi, waiting, countdown, keepAwake, idleSetup, etaTasks, etaHistory }
 enum PreviewUsage { case data, critical, stale, empty, noLimits }
 
 extension AppModel {
@@ -124,9 +137,84 @@ extension AppModel {
                 _ = m.handle(.keepAwake, at: now.addingTimeInterval(-3005))
             case .idleSetup:
                 setup = SetupStatus(sudoers: true, hooks: true, notifications: false, loginItem: true, socket: true, statusLine: false)
+            case .etaTasks:
+                for e in Self.etaEvents(now: now) { _ = m.handle(.hook(e.0), at: e.1) }
+                _ = m.handle(.keepAwake, at: now.addingTimeInterval(-1044))
+            case .etaHistory:
+                for e in Self.etaEvents(now: now) where e.0.sessionID == "b" { _ = m.handle(.hook(e.0), at: e.1) }
+                _ = m.handle(.keepAwake, at: now.addingTimeInterval(-1044))
             }
         }
         previewInject(history: history, setup: setup, selfTest: selfTestResults)
+        let events: [(HookEvent, Date)]
+        switch scenario {
+        case .etaTasks: events = Self.etaEvents(now: now)
+        case .etaHistory: events = Self.etaEvents(now: now).filter { $0.0.sessionID == "b" }
+        default: events = []
+        }
+        previewEta(turns: Self.sampleTurns(now: now), events: events, at: now)
+        if scenario == .etaTasks { sessionPage = "a" }
+    }
+
+    /// Session "a" (rasinova-residence) works through a 7-step task list with two subagents; session "b" (code)
+    /// has no task list, so its estimate comes from history.
+    static func etaEvents(now: Date) -> [(HookEvent, Date)] {
+        let a = "/Users/me/Projects/rasinova-residence", b = "/Users/me/Projects/code"
+        func ev(_ kind: HookKind, _ id: String, _ cwd: String, _ t: TimeInterval, signals: [TaskSignal] = [],
+                agent: String? = nil, type: String? = nil) -> (HookEvent, Date) {
+            (HookEvent(kind: kind, sessionID: id, cwd: cwd, pid: 1, agentID: agent, agentType: type, taskSignals: signals),
+             now.addingTimeInterval(t))
+        }
+        let subjects = ["Načíst stávající formulář rezervace", "Sjednotit model termínů", "Upravit API pro dostupnost",
+                        "Přidat validaci termínů do formuláře", "Doplnit chybové hlášky", "Napsat testy validace",
+                        "Aktualizovat dokumentaci"]
+        var list = [ev(.userPromptSubmit, "a", a, -1226)]
+        for (i, subject) in subjects.enumerated() {
+            list.append(ev(.taskCreated, "a", a, -1220 + Double(i), signals: [.created(id: "\(i + 1)", subject: subject)]))
+        }
+        let starts: [TimeInterval] = [-1210, -900, -610, -290]
+        for (i, start) in starts.enumerated() {
+            list.append(ev(.postToolUse, "a", a, start, signals: [.started(id: "\(i + 1)")]))
+            if i < 3 { list.append(ev(.taskCompleted, "a", a, starts[i + 1] - 2, signals: [.completed(id: "\(i + 1)", subject: nil)])) }
+        }
+        list.append(ev(.subagentStart, "a", a, -200, agent: "x1", type: "Explore"))
+        list.append(ev(.subagentStart, "a", a, -120, agent: "x2", type: "code-reviewer"))
+        list.append(ev(.userPromptSubmit, "b", b, -520))
+        list.append(ev(.postToolUse, "b", b, -30))
+        return list
+    }
+
+    /// Five weeks of finished turns across three projects, with the checkpoints the estimate would have shown.
+    static func sampleTurns(now: Date) -> [TurnRecord] {
+        var seed: UInt64 = 42
+        func rnd() -> Double {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return Double(seed >> 11) / Double(1 << 53)
+        }
+        let projects = ["rasinova-residence", "code", "alwayson"]
+        var turns: [TurnRecord] = []
+        for i in 0..<60 {
+            let project = projects[i % 3]
+            let started = now.addingTimeInterval(-Double(i) * 16_000 - 1800 - rnd() * 3000)
+            let tasks = project == "code" && i % 2 == 0 ? 0 : 3 + Int(rnd() * 8)
+            let perTask = 180 + rnd() * 240
+            let durations = (0..<tasks).map { _ in perTask * (0.7 + rnd() * 0.6) }
+            let active = tasks > 0 ? durations.reduce(0, +) + 40 : 360 + rnd() * 900
+            // Older turns were estimated worse than recent ones, so the trend improves.
+            let errorScale = i < 20 ? 0.18 : 0.35
+            var checkpoints: [EtaCheckpoint] = []
+            if i % 7 != 3 {
+                let likely = active * (1 + (rnd() - 0.45) * 2 * errorScale)
+                let half = likely * (tasks > 0 ? 0.15 : 0.35)
+                checkpoints = [EtaCheckpoint(fraction: 0.25, low: likely - half, likely: likely, high: likely + half,
+                                             confidence: tasks > 0 ? .medium : .low, tasksTotal: tasks > 0 ? tasks : nil)]
+            }
+            turns.append(TurnRecord(id: "t\(i)", project: project, startedAt: started, duration: active + rnd() * 60,
+                                    activeDuration: active, taskCount: tasks, taskDurations: durations,
+                                    subagents: i % 4 == 0 ? [SubagentRun(type: "Explore", duration: 200 + rnd() * 300)] : [],
+                                    toolCount: 20 + Int(rnd() * 60), checkpoints: checkpoints))
+        }
+        return turns
     }
 
     func previewUsage(_ kind: PreviewUsage) {
