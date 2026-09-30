@@ -16,17 +16,23 @@ public actor EffectExecutor {
     private let history: HistoryStore
     private let onPowerError: @Sendable (String?) -> Void
     private let onHistory: @Sendable ([SessionRecord]) -> Void
+    private let decisions: SleepDecisionStore?
+    private let onDecisions: @Sendable ([SleepDecisionRecord]) -> Void
     private var graceSeconds: Int = 30
     private var held = false
 
     public init(power: PowerControlling, notifier: Notifier?, history: HistoryStore,
                 onPowerError: @escaping @Sendable (String?) -> Void,
-                onHistory: @escaping @Sendable ([SessionRecord]) -> Void) {
+                onHistory: @escaping @Sendable ([SessionRecord]) -> Void,
+                decisions: SleepDecisionStore? = nil,
+                onDecisions: @escaping @Sendable ([SleepDecisionRecord]) -> Void = { _ in }) {
         self.power = power
         self.notifier = notifier
         self.history = history
         self.onPowerError = onPowerError
         self.onHistory = onHistory
+        self.decisions = decisions
+        self.onDecisions = onDecisions
     }
 
     public func setGrace(_ seconds: Int) { graceSeconds = seconds }
@@ -73,6 +79,11 @@ public actor EffectExecutor {
             case .waitTimedOut(let project, let waited):
                 Log.shared.warning("\(project) waited \(Int(waited / 60)) min for an answer; starting the sleep countdown")
                 notifier?.postWaitTimeout(project: project, waited: waited)
+            case .sleepDecision(let record):
+                // Every sleep and every skip, with its reason: "sleep: lid closed, no external display",
+                // "skip: user active 12 s ago", "skip: assertion held by zoom.us".
+                Log.shared.info(record.logLine)
+                if let decisions { onDecisions(decisions.append(record)) }
             case .ignoredNotification(let type):
                 Log.shared.info("ignored Notification hook with unknown notification_type \(type ?? "(none)")")
             }

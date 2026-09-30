@@ -52,8 +52,12 @@ struct SettingsView: View {
                 }.labelsHidden().frame(width: 84)
             }
             RowDivider()
-            SettingRow(title: L("Only sleep if the lid is closed"), subtitle: L("With the lid open, Vigil restores normal sleep but does not force it.")) {
-                Toggle("", isOn: config(\.sleepOnlyIfLidClosed)).labelsHidden().toggleStyle(.switch)
+            SettingRow(title: L("Sleep with the lid open after inactivity"),
+                       subtitle: L("Vigil only forces sleep when you are away: lid closed without an external display. With the lid open it hands sleep back to macOS, unless there has been no keyboard, mouse or trackpad input for this long.")) {
+                Picker("", selection: config(\.lidOpenIdleSleep)) {
+                    Text(L("Never")).tag(0.0)
+                    ForEach([5.0, 10, 20], id: \.self) { Text("\(Int($0)) min").tag($0 * 60) }
+                }.labelsHidden().frame(width: 84)
             }
             RowDivider()
             VStack(alignment: .leading, spacing: 8) {

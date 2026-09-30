@@ -18,7 +18,9 @@ struct HistoryView: View {
             .frame(maxWidth: .infinity)
 
             switch model.historyTab {
-            case .sessions: SessionHistory(model: model)
+            case .sessions:
+                SessionHistory(model: model)
+                if !model.sleepDecisions.isEmpty { SleepDecisionHistory(decisions: model.sleepDecisions, accent: model.accent) }
             case .accuracy: AccuracyHistory(turns: model.turns, now: model.now, accent: model.accent)
             }
         }
@@ -241,6 +243,57 @@ private struct TightLabel: LabelStyle {
         HStack(spacing: 4) {
             configuration.icon.font(.system(size: 11, weight: .bold))
             configuration.title
+        }
+    }
+}
+
+// MARK: - Sleep decisions
+
+/// Every forced sleep and every time Vigil let macOS decide instead, with the reason.
+private struct SleepDecisionHistory: View {
+    let decisions: [SleepDecisionRecord]
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionTitle(text: L("Sleep decisions"))
+            Card(padding: 6) {
+                LazyVStack(spacing: 0) {
+                    let shown = Array(decisions.prefix(30))
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, d in
+                        HStack(spacing: 12) {
+                            Image(systemName: d.slept ? "moon.fill" : "arrow.uturn.backward.circle")
+                                .font(.system(size: 15))
+                                .foregroundStyle(d.slept ? accent : .secondary)
+                                .frame(width: 20)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(d.slept ? L("Vigil put the Mac to sleep") : L("Left sleep to macOS"))
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(SleepGateText.reason(d.reason) + " · " + trigger(d.trigger))
+                                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                            Text(d.date, format: .dateTime.day().month().hour().minute())
+                                .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 9)
+                        if index < shown.count - 1 { RowDivider().padding(.leading, 44) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func trigger(_ t: SleepTrigger) -> String {
+        switch t {
+        case .finished: return L("after Claude finished")
+        case .countdownExpired: return L("end of the countdown")
+        case .countdownCancelled: return L("countdown cancelled")
+        case .maxDuration: return L("maximum keep-awake time")
+        case .lowBattery: return L("low battery")
+        case .thermal: return L("Mac running hot")
+        case .userRequested: return L("Sleep now")
         }
     }
 }

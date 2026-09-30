@@ -88,6 +88,7 @@ struct IslandView: View {
         case .working(let elapsed, let eta): return eta?.remainingText ?? Format.clock(elapsed)
         case .countdown(let remaining): return L("Sleeps in %@", Format.clock(remaining))
         case .waiting: return L("Waiting")
+        case .handedBack: return L("Done · Mac runs normally")
         case .idle: return L("Ready")
         case .off: return L("Off")
         case .paused: return L("Paused")
@@ -99,7 +100,7 @@ struct IslandView: View {
         case .working(_, let eta): return eta.map { $0.confident ? accent : Color.secondary } ?? accent
         case .countdown: return accent
         case .waiting: return Theme.waiting
-        case .idle, .off, .paused: return .secondary
+        case .handedBack, .idle, .off, .paused: return .secondary
         }
     }
 
@@ -107,6 +108,7 @@ struct IslandView: View {
         switch state {
         case .working, .countdown, .paused: return 210
         case .idle, .off: return 190
+        case .handedBack: return 270
         case .waiting: return 150
         }
     }
@@ -226,6 +228,7 @@ struct SessionCard: View {
             if let session, !session.isWorking { return L("Ready") }
             return model.workingSessions.isEmpty ? L("Keeping awake") : L("Claude is working")
         case .waiting, .idle: return L("Ready")
+        case .handedBack: return L("Done")
         }
     }
 

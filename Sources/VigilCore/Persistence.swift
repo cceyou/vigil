@@ -162,3 +162,42 @@ public final class HistoryStore: @unchecked Sendable {
         try? FileManager.default.removeItem(at: url)
     }
 }
+
+/// The last 100 sleep decisions (sleeps and skips with their reasons), newest first.
+public final class SleepDecisionStore: @unchecked Sendable {
+    public static let limit = 100
+    private let url: URL
+    private let lock = NSLock()
+
+    public init(url: URL) { self.url = url }
+
+    private static var encoder: JSONEncoder {
+        let e = JSONEncoder(); e.dateEncodingStrategy = .iso8601; e.outputFormatting = [.sortedKeys]; return e
+    }
+    private static var decoder: JSONDecoder {
+        let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601; return d
+    }
+
+    public func load() -> [SleepDecisionRecord] {
+        lock.lock(); defer { lock.unlock() }
+        guard let data = try? Data(contentsOf: url),
+              let list = try? Self.decoder.decode([SleepDecisionRecord].self, from: data) else { return [] }
+        return list
+    }
+
+    @discardableResult
+    public func append(_ record: SleepDecisionRecord) -> [SleepDecisionRecord] {
+        var list = load()
+        list.insert(record, at: 0)
+        if list.count > Self.limit { list = Array(list.prefix(Self.limit)) }
+        lock.lock(); defer { lock.unlock() }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let data = try? Self.encoder.encode(list) { try? data.write(to: url, options: .atomic) }
+        return list
+    }
+
+    public func clear() {
+        lock.lock(); defer { lock.unlock() }
+        try? FileManager.default.removeItem(at: url)
+    }
+}

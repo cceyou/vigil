@@ -1,7 +1,7 @@
 import Foundation
 
 public enum CheckID: String, CaseIterable, Identifiable, Sendable {
-    case sudoers, hooks, socket, roundTrip, subagents, statusLine, notifications
+    case sudoers, hooks, socket, roundTrip, subagents, statusLine, notifications, sleepGate
     public var id: String { rawValue }
 }
 
@@ -92,13 +92,20 @@ public struct SelfTest: Sendable {
     public var isNotificationAuthorized: @Sendable () async -> Bool
     /// When true the sudoers check uses `sudo -n -l` instead of actually running `pmset ... 0`.
     public var awakeHeld: Bool
+    /// The "sleep with the lid open after inactivity" setting, for the sleep gate check (0 = never).
+    public var lidOpenIdleSleep: TimeInterval
+    /// Reads the presence snapshot (injectable for tests).
+    public var readPresence: @Sendable () -> PresenceSnapshot
 
     public init(paths: VigilPaths = .standard, probe: SelfTestProbe,
-                isNotificationAuthorized: @escaping @Sendable () async -> Bool, awakeHeld: Bool) {
+                isNotificationAuthorized: @escaping @Sendable () async -> Bool, awakeHeld: Bool,
+                lidOpenIdleSleep: TimeInterval = 0, readPresence: @escaping @Sendable () -> PresenceSnapshot = { PresenceReader.snapshot() }) {
         self.paths = paths
         self.probe = probe
         self.isNotificationAuthorized = isNotificationAuthorized
         self.awakeHeld = awakeHeld
+        self.lidOpenIdleSleep = lidOpenIdleSleep
+        self.readPresence = readPresence
     }
 
     public func run() async -> [CheckResult] {
@@ -110,7 +117,21 @@ public struct SelfTest: Sendable {
         results.append(await checkSubagents())
         results.append(await checkStatusLine())
         results.append(await checkNotifications())
+        results.append(checkSleepGate())
         return results
+    }
+
+    /// Informational: what the sleep gate reads right now and what it would decide. Always passes.
+    public func checkSleepGate() -> CheckResult {
+        let p = readPresence()
+        let decision = SleepGate.decide(p, lidOpenIdleThreshold: lidOpenIdleSleep)
+        let foreign = SleepGate.foreignAssertions(p).map(\.process)
+        let facts = L("Lid %@ · external displays: %d · no input for %d s · other apps keeping it awake: %@",
+                      p.lidClosed ? L("closed") : L("open"), p.externalDisplays, Int(p.idleSeconds),
+                      foreign.isEmpty ? L("none") : Array(Set(foreign)).sorted().joined(separator: ", "))
+        let verdict = decision.allow ? L("Vigil would put the Mac to sleep now: %@", SleepGateText.reason(decision.reason))
+                                     : L("Vigil would not force sleep now: %@", SleepGateText.reason(decision.reason))
+        return CheckResult(id: .sleepGate, passed: true, detail: facts + "\n" + verdict, fix: nil)
     }
 
     private func checkSudoers() async -> CheckResult {

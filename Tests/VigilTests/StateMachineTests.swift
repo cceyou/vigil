@@ -27,7 +27,7 @@ import Testing
         #expect(m.phase == .countdown)
         #expect(m.handle(.tick, at: at(39)).isEmpty)
         let fx = m.handle(.tick, at: at(40))
-        #expect(fx == [.dismissCountdown, .releaseAwake, .sleepNow])
+        #expect(fx.power == [.dismissCountdown, .releaseAwake, .sleepNow])
         #expect(m.phase == .armed)
         #expect(!m.awakeHeld)
     }
@@ -193,7 +193,7 @@ import Testing
         _ = m.handle(hook(.userPromptSubmit), at: at(0))
         _ = m.handle(hook(.postToolUse), at: at(90)) // heartbeat keeps the session from being dropped as stale
         let fx = m.handle(.tick, at: at(100))
-        #expect(fx == [.notifyGuard(.maxDuration), .releaseAwake, .sleepNow])
+        #expect(fx.power == [.notifyGuard(.maxDuration), .releaseAwake, .sleepNow])
         #expect(!m.awakeHeld)
         // Still "working" but latched: must not re-acquire.
         #expect(m.handle(hook(.postToolUse), at: at(101)).isEmpty)
@@ -210,7 +210,7 @@ import Testing
         let ok = m.handle(.environment(Environment(lidClosed: true, onBattery: true, batteryPercent: 15)), at: at(1))
         #expect(ok.isEmpty) // exactly at the threshold is not "below"
         let fx = m.handle(.environment(Environment(lidClosed: true, onBattery: true, batteryPercent: 14)), at: at(2))
-        #expect(fx == [.notifyGuard(.lowBattery), .releaseAwake, .sleepNow])
+        #expect(fx.power == [.notifyGuard(.lowBattery), .releaseAwake, .sleepNow])
         #expect(m.phase == .armed)
         // While still low, a new prompt does not re-acquire...
         #expect(m.handle(hook(.userPromptSubmit, "b"), at: at(3)).isEmpty)
@@ -219,10 +219,10 @@ import Testing
     }
 
     @Test func lowBatteryWithLidOpenReleasesButDoesNotForceSleep() {
-        var m = machine { $0.lowBatteryThreshold = 15 }
+        var m = machine(presence: atTheMac) { $0.lowBatteryThreshold = 15 }
         _ = m.handle(hook(.userPromptSubmit), at: at(0))
         let fx = m.handle(.environment(Environment(lidClosed: false, onBattery: true, batteryPercent: 10)), at: at(1))
-        #expect(fx == [.notifyGuard(.lowBattery), .releaseAwake])
+        #expect(fx.power == [.notifyGuard(.lowBattery), .releaseAwake])
         #expect(m.blockedReason == .lowBattery)
     }
 
@@ -252,7 +252,7 @@ import Testing
         _ = m.handle(hook(.userPromptSubmit), at: at(0))
         #expect(m.handle(.environment(Environment(lidClosed: false, thermal: .critical)), at: at(1)).isEmpty)
         let fx = m.handle(.environment(Environment(lidClosed: true, thermal: .serious)), at: at(2))
-        #expect(fx == [.notifyGuard(.thermal), .releaseAwake, .sleepNow])
+        #expect(fx.power == [.notifyGuard(.thermal), .releaseAwake, .sleepNow])
         #expect(!m.awakeHeld)
     }
 
@@ -260,26 +260,6 @@ import Testing
         var m = machine()
         _ = m.handle(hook(.userPromptSubmit), at: at(0))
         #expect(m.handle(.environment(Environment(lidClosed: true, thermal: .fair)), at: at(1)).isEmpty)
-    }
-
-    // MARK: lid option
-
-    @Test func sleepOnlyIfLidClosedSkipsSleepWhenLidOpen() {
-        var m = machine { $0.sleepOnlyIfLidClosed = true }
-        _ = m.handle(hook(.userPromptSubmit), at: at(0))
-        _ = m.handle(.environment(Environment(lidClosed: false)), at: at(1))
-        _ = m.handle(hook(.stop), at: at(2))
-        let fx = m.handle(.tick, at: at(40))
-        #expect(fx == [.dismissCountdown, .releaseAwake]) // restored, but no sleepnow
-        #expect(m.phase == .armed)
-    }
-
-    @Test func sleepOnlyIfLidClosedSleepsWhenLidClosed() {
-        var m = machine { $0.sleepOnlyIfLidClosed = true }
-        _ = m.handle(hook(.userPromptSubmit), at: at(0))
-        _ = m.handle(.environment(Environment(lidClosed: true)), at: at(1))
-        _ = m.handle(hook(.stop), at: at(2))
-        #expect(m.handle(.tick, at: at(40)) == [.dismissCountdown, .releaseAwake, .sleepNow])
     }
 
     // MARK: master toggle and manual sleep
@@ -305,7 +285,7 @@ import Testing
         var m = machine()
         _ = m.handle(hook(.userPromptSubmit), at: at(0))
         let fx = m.handle(.sleepNow, at: at(1))
-        #expect(fx == [.releaseAwake, .sleepNow])
+        #expect(fx.power == [.releaseAwake, .sleepNow])
         #expect(m.latch == .manualSleep)
         #expect(m.handle(hook(.postToolUse), at: at(2)).isEmpty) // no instant re-acquire
         #expect(m.handle(hook(.userPromptSubmit), at: at(3)) == [.acquireAwake]) // fresh prompt does
@@ -313,7 +293,7 @@ import Testing
 
     @Test func sleepNowWhileArmedJustSleeps() {
         var m = machine()
-        #expect(m.handle(.sleepNow, at: at(0)) == [.sleepNow])
+        #expect(m.handle(.sleepNow, at: at(0)).power == [.sleepNow])
     }
 
     @Test func selfTestEventsNeverAffectState() {

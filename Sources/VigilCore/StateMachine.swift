@@ -174,7 +174,10 @@ public struct Config: Equatable, Codable, Sendable {
     public var maxKeepAwake: TimeInterval = 8 * 3600
     /// Percent. 0 turns the guard off.
     public var lowBatteryThreshold: Int = 5
-    public var sleepOnlyIfLidClosed: Bool = false
+    /// "S otevřeným víkem uspat po nečinnosti": seconds without keyboard/mouse/trackpad input after which a
+    /// forced sleep is allowed with the lid open (or in closed-lid desktop mode). 0 = never (the default).
+    /// Replaces the old `sleepOnlyIfLidClosed`, which is ignored when an old settings file still has it.
+    public var lidOpenIdleSleep: TimeInterval = 0
     public var notificationPolicy: NotificationPolicy = .keepAwake
     /// Under `.keepAwake`: after waiting this long for an answer, notify and start the normal sleep countdown.
     public var maxWaiting: TimeInterval = 2 * 3600
@@ -191,7 +194,7 @@ public struct Config: Equatable, Codable, Sendable {
         graceSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .graceSeconds) ?? d.graceSeconds
         maxKeepAwake = try c.decodeIfPresent(TimeInterval.self, forKey: .maxKeepAwake) ?? d.maxKeepAwake
         lowBatteryThreshold = try c.decodeIfPresent(Int.self, forKey: .lowBatteryThreshold) ?? d.lowBatteryThreshold
-        sleepOnlyIfLidClosed = try c.decodeIfPresent(Bool.self, forKey: .sleepOnlyIfLidClosed) ?? d.sleepOnlyIfLidClosed
+        lidOpenIdleSleep = try c.decodeIfPresent(TimeInterval.self, forKey: .lidOpenIdleSleep) ?? d.lidOpenIdleSleep
         notificationPolicy = try c.decodeIfPresent(NotificationPolicy.self, forKey: .notificationPolicy) ?? d.notificationPolicy
         maxWaiting = try c.decodeIfPresent(TimeInterval.self, forKey: .maxWaiting) ?? d.maxWaiting
         manualKeepAwake = try c.decodeIfPresent(TimeInterval.self, forKey: .manualKeepAwake) ?? d.manualKeepAwake
@@ -275,6 +278,9 @@ public enum Event: Equatable, Sendable {
     case sleepNow
     case environment(Environment)
     case configChanged(Config)
+    /// A fresh reading of lid, displays, input idle time and assertions for the sleep gate. Send it about once
+    /// per second (before `.tick`) and right before hook events.
+    case presence(PresenceSnapshot)
 }
 
 public enum Effect: Equatable, Sendable {
@@ -294,6 +300,8 @@ public enum Effect: Equatable, Sendable {
     case waitTimedOut(project: String, waited: TimeInterval)
     /// A Notification hook with an unknown (or missing) `notification_type`; the executor logs it.
     case ignoredNotification(type: String?)
+    /// A sleep or a skip decided by the sleep gate (or "Uspat hned"); the executor logs it and keeps it in history.
+    case sleepDecision(SleepDecisionRecord)
 }
 
 // MARK: - State machine
@@ -311,12 +319,22 @@ public struct StateMachine: Equatable {
     public private(set) var enabled: Bool
     public private(set) var environment = Environment()
     public private(set) var config: Config
+    /// Latest presence reading for the sleep gate (nil until the first one: then nothing is ever forced).
+    public private(set) var presence: PresenceSnapshot?
+    public private(set) var countdownStartedAt: Date?
+    /// Claude finished but the gate refused a forced sleep: Vigil released its keep-awake and macOS sleeps on its
+    /// own. The UI shows "Hotovo · Mac běží normálně". Cleared when Vigil holds the Mac awake again.
+    public private(set) var handedBack: SleepDecisionRecord?
 
-    public init(enabled: Bool = true, config: Config = Config()) {
+    public init(enabled: Bool = true, config: Config = Config(), presence: PresenceSnapshot? = nil) {
         self.enabled = enabled
         self.config = config
+        self.presence = presence
         self.phase = enabled ? .armed : .off
     }
+
+    /// What the sleep gate says right now.
+    public var gate: GateDecision { SleepGate.decide(presence, lidOpenIdleThreshold: config.lidOpenIdleSleep) }
 
     /// The reason acquiring is currently blocked, if any (latch or environment guard).
     public var blockedReason: GuardReason? { latch ?? environmentGuard }
@@ -378,6 +396,7 @@ public struct StateMachine: Equatable {
         case .cancelCountdown:
             if phase == .countdown {
                 countdownDeadline = nil
+                countdownStartedAt = nil
                 fx.append(.dismissCountdown)
                 // Back to armed; a still-blocking session would immediately flip us to working again,
                 // so latch until everything is idle.
@@ -393,18 +412,22 @@ public struct StateMachine: Equatable {
             latch = nil
             if countdownDeadline != nil {
                 countdownDeadline = nil
+                countdownStartedAt = nil
                 fx.append(.dismissCountdown)
             }
 
         case .sleepNow:
+            // "Uspat hned" is the one sleep that never asks the gate: the user is right there asking for it.
             keepAwakeUntil = nil
             if countdownDeadline != nil {
                 countdownDeadline = nil
+                countdownStartedAt = nil
                 fx.append(.dismissCountdown)
             }
             if awakeHeld { fx.append(.releaseAwake) }
             awakeHeld = false
             awakeSince = nil
+            fx.append(.sleepDecision(SleepDecisionRecord(date: now, trigger: .userRequested, slept: true, reason: .userRequested)))
             fx.append(.sleepNow)
             if anyBlockingSession { latch = .manualSleep }
 
@@ -413,6 +436,10 @@ public struct StateMachine: Equatable {
 
         case .configChanged(let new):
             config = new
+
+        case .presence(let snapshot):
+            presence = snapshot
+            checkCountdown(now: now, fx: &fx)
         }
 
         reconcile(now: now, fx: &fx)
@@ -583,21 +610,24 @@ public struct StateMachine: Equatable {
 
         // Max keep-awake failsafe.
         if awakeHeld, let since = awakeSince, now.timeIntervalSince(since) >= config.maxKeepAwake {
-            trip(.maxDuration, fx: &fx)
+            trip(.maxDuration, now: now, fx: &fx)
             return
         }
 
-        // Countdown expiry: restore first, sleep second.
+        // Countdown expiry: restore first, then ask the gate once more (with the freshest reading), sleep last.
         if phase == .countdown, let deadline = countdownDeadline, now >= deadline {
             countdownDeadline = nil
+            countdownStartedAt = nil
             fx.append(.dismissCountdown)
             fx.append(.releaseAwake)
             awakeHeld = false
             awakeSince = nil
-            if config.sleepOnlyIfLidClosed && !environment.lidClosed {
-                // Lid is open: stay awake-capable but do not force sleep.
-            } else {
+            let g = gate
+            fx.append(.sleepDecision(SleepDecisionRecord(date: now, trigger: .countdownExpired, slept: g.allow, reason: g.reason)))
+            if g.allow {
                 fx.append(.sleepNow)
+            } else {
+                handedBack = SleepDecisionRecord(date: now, trigger: .countdownExpired, slept: false, reason: g.reason)
             }
             forceArmed(now: now, fx: &fx)
         }
@@ -605,10 +635,13 @@ public struct StateMachine: Equatable {
 
     // MARK: guards / latch
 
-    /// Release (and sleep, see below) immediately and refuse to re-acquire until the condition clears.
-    private mutating func trip(_ reason: GuardReason, fx: inout [Effect]) {
+    /// Release immediately, sleep only if the gate allows, and refuse to re-acquire until the condition clears.
+    /// Battery, heat and the max-duration failsafe all protect an unattended Mac; with someone at it, Vigil hands
+    /// sleep back to macOS instead of yanking the machine to sleep under them.
+    private mutating func trip(_ reason: GuardReason, now: Date, fx: inout [Effect]) {
         if countdownDeadline != nil {
             countdownDeadline = nil
+            countdownStartedAt = nil
             fx.append(.dismissCountdown)
         }
         keepAwakeUntil = nil
@@ -616,11 +649,37 @@ public struct StateMachine: Equatable {
         if awakeHeld { fx.append(.releaseAwake) }
         awakeHeld = false
         awakeSince = nil
-        // Battery and heat guards protect a closed laptop. With the lid open someone is at the Mac,
-        // so hand sleep back to macOS instead of yanking the machine to sleep under them.
-        let environmental = reason == .lowBattery || reason == .thermal
-        if !environmental || environment.lidClosed { fx.append(.sleepNow) }
+        let trigger: SleepTrigger = reason == .lowBattery ? .lowBattery : reason == .thermal ? .thermal : .maxDuration
+        if reason != .manualSleep {
+            let g = gate
+            fx.append(.sleepDecision(SleepDecisionRecord(date: now, trigger: trigger, slept: g.allow, reason: g.reason)))
+            if g.allow { fx.append(.sleepNow) }
+        }
         if reason == .maxDuration || reason == .manualSleep { latch = reason }
+    }
+
+    /// While the countdown runs: any keyboard, mouse or trackpad input since it started, or the gate turning
+    /// (lid opened, a video started), cancels it and hands sleep back to macOS. No notification, back to Ready.
+    private mutating func checkCountdown(now: Date, fx: inout [Effect]) {
+        guard phase == .countdown, countdownDeadline != nil, let started = countdownStartedAt, let presence else { return }
+        let reason: GateReason?
+        if presence.idleSeconds + 1 < now.timeIntervalSince(started) {
+            reason = .inputDuringCountdown(seconds: Int(presence.idleSeconds))
+        } else if !gate.allow {
+            reason = gate.reason
+        } else {
+            reason = nil
+        }
+        guard let reason else { return }
+        countdownDeadline = nil
+        countdownStartedAt = nil
+        keepAwakeUntil = nil
+        fx.append(.dismissCountdown)
+        fx.append(.sleepDecision(SleepDecisionRecord(date: now, trigger: .countdownCancelled, slept: false, reason: reason)))
+        // Someone is back at the Mac: "Připraveno", not "Hotovo · Mac běží normálně".
+        handedBack = nil
+        if anyBlockingSession { latch = .manualSleep }
+        forceArmed(now: now, fx: &fx)
     }
 
     private mutating func forceArmed(now: Date, fx: inout [Effect]) {
@@ -639,7 +698,7 @@ public struct StateMachine: Equatable {
         if latch != nil, !anyBlockingSession, !keepAwakeActive(now) { latch = nil }
 
         if !enabled {
-            if countdownDeadline != nil { countdownDeadline = nil; fx.append(.dismissCountdown) }
+            if countdownDeadline != nil { countdownDeadline = nil; countdownStartedAt = nil; fx.append(.dismissCountdown) }
             if awakeHeld { fx.append(.releaseAwake); awakeHeld = false; awakeSince = nil }
             phase = .off
             return
@@ -647,7 +706,7 @@ public struct StateMachine: Equatable {
 
         // Environment guard trips while we hold the Mac awake.
         if awakeHeld, let env = environmentGuard {
-            trip(env, fx: &fx)
+            trip(env, now: now, fx: &fx)
             phase = .armed
             return
         }
@@ -660,18 +719,32 @@ public struct StateMachine: Equatable {
                 fx.append(.acquireAwake)
                 awakeHeld = true
                 awakeSince = now
+                handedBack = nil
             }
             if countdownDeadline != nil {
                 countdownDeadline = nil
+                countdownStartedAt = nil
                 fx.append(.dismissCountdown)
             }
             phase = .working
         } else if awakeHeld {
-            // Was working, nothing blocks any more (or blocked): start the countdown.
+            // Was working, nothing blocks any more: the countdown only runs if the gate would allow the sleep.
+            // Otherwise release at once and let macOS sleep by its own Energy settings: no countdown, no notification.
             if countdownDeadline == nil {
-                let deadline = now.addingTimeInterval(config.graceSeconds)
-                countdownDeadline = deadline
-                fx.append(.showCountdown(deadline: deadline))
+                let g = gate
+                if g.allow {
+                    let deadline = now.addingTimeInterval(config.graceSeconds)
+                    countdownDeadline = deadline
+                    countdownStartedAt = now
+                    fx.append(.showCountdown(deadline: deadline))
+                } else {
+                    let record = SleepDecisionRecord(date: now, trigger: .finished, slept: false, reason: g.reason)
+                    fx.append(.sleepDecision(record))
+                    handedBack = record
+                    keepAwakeUntil = nil
+                    forceArmed(now: now, fx: &fx)
+                    return
+                }
             }
             phase = .countdown
         } else {

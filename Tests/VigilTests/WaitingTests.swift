@@ -44,7 +44,7 @@ import Testing
         #expect(m.countdownDeadline == at(40))
         #expect(m.sessions[0].state == .idle)
         #expect(m.phase == .countdown)
-        #expect(m.handle(.tick, at: at(40)) == [.dismissCountdown, .releaseAwake, .sleepNow])
+        #expect(m.handle(.tick, at: at(40)).power == [.dismissCountdown, .releaseAwake, .sleepNow])
         // ...and a late idle_prompt after the Mac slept does not re-acquire.
         #expect(m.handle(hook(.notification, type: "idle_prompt"), at: at(90)).isEmpty)
         #expect(!m.awakeHeld)
@@ -118,7 +118,7 @@ import Testing
         #expect(m.phase == .countdown)
         #expect(m.sessions[0].state == .waiting) // still waiting, it just no longer keeps the Mac awake
         #expect(m.handle(.tick, at: at(120)).isEmpty) // notified once
-        #expect(m.handle(.tick, at: at(135)) == [.dismissCountdown, .releaseAwake, .sleepNow])
+        #expect(m.handle(.tick, at: at(135)).power == [.dismissCountdown, .releaseAwake, .sleepNow])
     }
 
     @Test func answeringAfterMaxWaitWorksAgainAndANewWaitGetsAFreshTimer() {

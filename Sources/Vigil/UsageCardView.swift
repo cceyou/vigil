@@ -136,6 +136,7 @@ struct UsageCardView: View {
             return L("Mac awake")
         case .countdown(let r): return L("Mac sleeps in %@", Format.clock(r))
         case .waiting: return L("Claude is waiting for you")
+        case .handedBack: return L("Done · Mac runs normally")
         case .idle: return L("Vigil is ready")
         case .off: return L("Vigil is off")
         case .paused(let reason): return PausedText.title(reason)

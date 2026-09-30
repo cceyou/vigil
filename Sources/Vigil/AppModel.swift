@@ -15,6 +15,8 @@ enum IslandState: Equatable {
     /// Elapsed time, plus the estimate when the island is set to show it.
     case working(TimeInterval, eta: SessionEta? = nil)
     case waiting
+    /// Claude finished, the sleep gate said no (someone is at the Mac): Vigil let go, macOS sleeps on its own.
+    case handedBack
     case idle
     case off
     /// Claude wants the Mac awake but a guard (battery, heat, time limit, manual sleep) refuses.
@@ -25,6 +27,7 @@ enum IslandState: Equatable {
         case .countdown: return "countdown"
         case .working: return "working"
         case .waiting: return "waiting"
+        case .handedBack: return "handedBack"
         case .idle: return "idle"
         case .off: return "off"
         case .paused: return "paused"
@@ -70,6 +73,8 @@ final class AppModel {
     private(set) var tracker = TurnTracker()
     /// Finished turns, newest first: what the estimate learns from and is scored against.
     private(set) var turns: [TurnRecord]
+    /// Every sleep and skip the sleep gate decided, newest first.
+    private(set) var sleepDecisions: [SleepDecisionRecord]
     /// Index of the working-session page shown in the popover.
     var sessionPage: String?
     /// History window tab: sessions or estimate accuracy.
@@ -81,6 +86,7 @@ final class AppModel {
     @ObservationIgnored private let historyStore: HistoryStore
     @ObservationIgnored private let usageStore: UsageStore
     @ObservationIgnored private let turnStore: TurnStore
+    @ObservationIgnored private let decisionStore: SleepDecisionStore
     @ObservationIgnored private let realPower: SystemPowerController
     @ObservationIgnored private let dryPower = DryRunPowerController()
     @ObservationIgnored private let notifier = Notifier()
@@ -109,6 +115,8 @@ final class AppModel {
         self.usage = usageStore.load()
         self.turnStore = TurnStore(url: paths.turns)
         self.turns = turnStore.load()
+        self.decisionStore = SleepDecisionStore(url: paths.sleepDecisions)
+        self.sleepDecisions = decisionStore.load()
         self.realPower = SystemPowerController(paths: paths)
     }
 
@@ -126,7 +134,9 @@ final class AppModel {
             power: settings.dryRun ? dryPower : realPower, notifier: Notifier.isAvailable ? notifier : nil,
             history: historyStore,
             onPowerError: { [weak self] error in DispatchQueue.main.async { MainActor.assumeIsolated { self?.powerError = error; self?.onChange?() } } },
-            onHistory: { [weak self] list in DispatchQueue.main.async { MainActor.assumeIsolated { self?.history = list } } })
+            onHistory: { [weak self] list in DispatchQueue.main.async { MainActor.assumeIsolated { self?.history = list } } },
+            decisions: decisionStore,
+            onDecisions: { [weak self] list in DispatchQueue.main.async { MainActor.assumeIsolated { self?.sleepDecisions = list } } })
         let executor = self.executor!
         let grace = Int(settings.config.graceSeconds)
         Task.detached {
@@ -252,6 +262,8 @@ final class AppModel {
     private func receive(_ event: HookEvent) {
         guard !SelfTest.isSelfTestEvent(event) else { return }
         let agent = event.agentID.map { " agent=\(event.agentType ?? "?")/\($0.prefix(8))" } ?? ""
+        // The gate decides with what is true right now, not with a reading cached seconds ago.
+        refreshPresence()
         let tasks = event.taskSignals.isEmpty ? "" : " tasks=\(event.taskSignals.count)"
         log.info("hook \(event.kind.rawValue) session=\(event.sessionID.prefix(8)) pid=\(event.pid.map(String.init) ?? "-")\(agent)\(tasks)")
         send(.hook(event))
@@ -271,6 +283,13 @@ final class AppModel {
         usageStore.save(usage)
         if !hadLimits && usage.hasRateLimits { log.info("usage: first rate_limits received") }
         post(alerts)
+    }
+
+    /// Lid, displays, input idle time and assertions, read fresh (a few milliseconds). Only the state machine's
+    /// sleep gate uses it; it is sent every second and before every hook event.
+    private func refreshPresence() {
+        let effects = machine.handle(.presence(PresenceReader.snapshot()), at: Date())
+        if !effects.isEmpty { jobs?.yield(.effects(effects)) }
     }
 
     private func postEtaNotifications() {
@@ -294,6 +313,7 @@ final class AppModel {
 
     private func tick() {
         tickCount += 1
+        refreshPresence()
         send(.tick)
         tracker.tick(at: Date(), history: turns)
         postEtaNotifications()
@@ -406,9 +426,15 @@ final class AppModel {
         case .working:
             if !waitingSessions.isEmpty { return .waiting }
             return .working(workingSessions.isEmpty ? awakeElapsed : workingElapsed, eta: islandEta)
-        case .armed: return waitingSessions.isEmpty ? .idle : .waiting
+        case .armed:
+            if !waitingSessions.isEmpty { return .waiting }
+            if let h = machine.handedBack, now.timeIntervalSince(h.date) < Self.handedBackDisplay { return .handedBack }
+            return .idle
         }
     }
+
+    /// How long "Hotovo · Mac běží normálně" stays up after Vigil handed sleep back to macOS.
+    static let handedBackDisplay: TimeInterval = 15 * 60
 
     /// How long the Mac has been held awake (the "keep awake 1 h" case has no working session).
     var awakeElapsed: TimeInterval { machine.awakeSince.map { now.timeIntervalSince($0) } ?? 0 }
@@ -446,6 +472,7 @@ final class AppModel {
         case .working: return "bolt.fill"
         case .countdown: return "moon.fill"
         case .waiting: return "exclamationmark"
+        case .handedBack: return "checkmark"
         case .idle: return "bolt"
         case .off: return "moon.zzz"
         case .paused: return "bolt.slash"
@@ -671,7 +698,7 @@ final class AppModel {
         if showing { open(.selfTest) }
         let test = SelfTest(paths: paths, probe: probe,
                             isNotificationAuthorized: { [notifier] in await notifier.isAuthorized() },
-                            awakeHeld: machine.awakeHeld)
+                            awakeHeld: machine.awakeHeld, lidOpenIdleSleep: settings.config.lidOpenIdleSleep)
         Task {
             // hook.sh must exist for the round trip; installing the script alone does not touch settings.json.
             if !FileManager.default.isExecutableFile(atPath: paths.hookScript.path) { try? HookInstaller(paths: paths).installScript() }
@@ -680,6 +707,9 @@ final class AppModel {
             let summary = selfTestResults.map { "\($0.id.rawValue)=\($0.passed ? "PASS" : "FAIL")" }.joined(separator: " ")
             log.info("self-test: \(summary)")
             for r in selfTestResults where !r.passed { log.warning("self-test \(r.id.rawValue): \(r.detail)") }
+            if let gate = selfTestResults.first(where: { $0.id == .sleepGate }) {
+                log.info("self-test sleep gate: \(gate.detail.replacingOccurrences(of: "\n", with: " → "))")
+            }
             refreshSetup()
         }
     }
@@ -706,7 +736,7 @@ final class AppModel {
 
     /// Snapshots only: replaces the state machine with one built by `build`.
     func previewMachine(_ build: (inout StateMachine) -> Void) {
-        var m = StateMachine(enabled: true, config: settings.config)
+        var m = StateMachine(enabled: true, config: settings.config, presence: .away)
         build(&m)
         machine = m
         now = Date()
@@ -729,7 +759,7 @@ final class AppModel {
 
     /// Builds a fresh state machine in the requested phase (snapshots only; no side effects are executed).
     func previewSessions(phase: Phase) {
-        var m = StateMachine(enabled: phase != .off, config: settings.config)
+        var m = StateMachine(enabled: phase != .off, config: settings.config, presence: .away)
         let t = Date().addingTimeInterval(-754)
         func hook(_ kind: HookKind, _ id: String, _ cwd: String, agent: String? = nil, type: String? = nil) -> Event {
             .hook(HookEvent(kind: kind, sessionID: id, cwd: cwd, agentID: agent, agentType: type))
@@ -757,7 +787,7 @@ final class AppModel {
 
     /// Snapshot state: the main agent has finished, two subagents are still running.
     func previewSubagentsOnly() {
-        var m = StateMachine(enabled: true, config: settings.config)
+        var m = StateMachine(enabled: true, config: settings.config, presence: .away)
         let t = Date().addingTimeInterval(-760)
         let cwd = "/Users/me/Projects/rasinova-residence"
         _ = m.handle(.hook(HookEvent(kind: .userPromptSubmit, sessionID: "a", cwd: cwd)), at: t.addingTimeInterval(-120))
@@ -770,7 +800,7 @@ final class AppModel {
 
     /// Snapshot state: Claude working, lid closed, battery under the threshold.
     func previewPaused() {
-        var m = StateMachine(enabled: true, config: settings.config)
+        var m = StateMachine(enabled: true, config: settings.config, presence: .away)
         let t = Date().addingTimeInterval(-754)
         _ = m.handle(.environment(VigilCore.Environment(lidClosed: true, onBattery: true, batteryPercent: 3)), at: t)
         _ = m.handle(.hook(HookEvent(kind: .userPromptSubmit, sessionID: "a", cwd: "/Users/me/Projects/alwayson")), at: t)

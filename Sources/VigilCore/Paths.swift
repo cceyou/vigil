@@ -21,6 +21,8 @@ public struct VigilPaths: Sendable {
     public var statusLineOriginal: URL { supportDir.appendingPathComponent("statusline.original.json") }
     /// The original status line command, run by the wrapper with the same stdin (empty: none).
     public var statusLineChain: URL { supportDir.appendingPathComponent("statusline.chain") }
+    /// Every sleep and skip the sleep gate decided, with its reason (last 100).
+    public var sleepDecisions: URL { supportDir.appendingPathComponent("sleep-decisions.json") }
     /// Finished turns (UserPromptSubmit → Stop) the work-time estimate learns from.
     public var turns: URL { supportDir.appendingPathComponent("turns.json") }
     /// Last known Claude usage (rate limits, per-session model and context).

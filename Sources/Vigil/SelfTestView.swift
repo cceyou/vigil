@@ -13,6 +13,7 @@ struct SelfTestView: View {
         case .subagents: return L("Subagent tracking")
         case .statusLine: return L("Status line")
         case .notifications: return L("Notifications")
+        case .sleepGate: return L("Sleep gate")
         }
     }
 

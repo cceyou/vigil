@@ -33,7 +33,7 @@ func subagent(_ kind: HookKind, _ agent: String, type: String? = "Explore", sess
         #expect(m.phase == .working)
         #expect(m.handle(subagent(.subagentStop, "x2"), at: at(200)) == [.showCountdown(deadline: at(230))])
         #expect(m.phase == .countdown)
-        #expect(m.handle(.tick, at: at(230)) == [.dismissCountdown, .releaseAwake, .sleepNow])
+        #expect(m.handle(.tick, at: at(230)).power == [.dismissCountdown, .releaseAwake, .sleepNow])
     }
 
     @Test func subagentStartDuringCountdownCancelsIt() {

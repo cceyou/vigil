@@ -13,10 +13,12 @@ func hook(_ kind: HookKind, _ id: String = "a", cwd: String? = "/Users/me/proj",
 /// Claude Code's Notification hook for a permission prompt.
 func permissionPrompt(_ id: String = "a") -> Event { hook(.notification, id, type: "permission_prompt") }
 
-func machine(enabled: Bool = true, _ configure: (inout Config) -> Void = { _ in }) -> StateMachine {
+/// A state machine whose sleep gate sees an unattended Mac (lid closed, no external display), so forced sleeps
+/// are allowed. Tests about the gate itself pass their own `presence`.
+func machine(enabled: Bool = true, presence: PresenceSnapshot? = .away, _ configure: (inout Config) -> Void = { _ in }) -> StateMachine {
     var config = Config()
     configure(&config)
-    return StateMachine(enabled: enabled, config: config)
+    return StateMachine(enabled: enabled, config: config, presence: presence)
 }
 
 /// A unique temp directory removed by the caller.
@@ -79,4 +81,14 @@ final class TestDefaults {
         CFPreferencesAppSynchronize(name as CFString)
         try? FileManager.default.removeItem(atPath: name + ".plist")
     }
+}
+
+/// Presence of someone at the Mac: lid open, typed 2 s ago, nothing else holding it awake.
+let atTheMac = PresenceSnapshot(lidClosed: false, externalDisplays: 0, idleSeconds: 2)
+
+extension Array where Element == Effect {
+    /// The power-relevant effects, without the sleep-decision log records.
+    var power: [Effect] { filter { if case .sleepDecision = $0 { return false } else { return true } } }
+    /// The sleep-decision records only.
+    var decisions: [SleepDecisionRecord] { compactMap { if case .sleepDecision(let r) = $0 { return r } else { return nil } } }
 }

@@ -1,6 +1,6 @@
 # Vigil
 
-A macOS menu bar app that keeps your MacBook **awake with the lid closed while Claude Code is working**, then puts it to **sleep once Claude Code has finished**.
+A macOS menu bar app that keeps your MacBook **awake with the lid closed while Claude Code is working**, then puts it to **sleep once Claude Code has finished**, but only when you are away. With the lid open it never yanks the Mac to sleep under you (see [The sleep gate](#the-sleep-gate)).
 
 - Menu bar only (no Dock icon, no Cmd+Tab entry). Click the icon for the popover (a black "Live Activity" style card), right-click for Toggle / Sleep now / Settings / Quit.
 - A thin **edge notch** on the right side of the screen opens a Liquid Glass card with your **Claude usage limits** (5-hour and weekly), read from Claude Code's documented status line JSON.
@@ -112,8 +112,9 @@ Claude Code ──hook──▶ hook.sh ──nc -U──▶ vigil.sock ──�
 - The Mac may sleep only when **all** sessions are idle by that definition or ended. A session **waiting for you** keeps the Mac awake under the default policy (see below).
 - `Stop` while subagents are still running only marks the main agent idle; no countdown starts. The countdown starts when the **last** `SubagentStop` arrives, and a `SubagentStart` during the countdown cancels it.
 - **Stuck-subagent guard**: a subagent with no `SubagentStop` for longer than the *stuck subagent limit* (default 2 h) is dropped with a warning in the log. `SessionEnd` or a dead Claude process clears all of that session's subagents.
-- After the last session goes idle, a **grace period** (default 30 s) starts. That is also the countdown you see ("Sleeping in 0:24") and the notification with **Cancel** / **Keep awake**. A new prompt during the countdown cancels it.
-- When it expires: `pmset -a disablesleep 0` is restored **first**, then `pmset sleepnow`. Always in that order (the executor is a single ordered queue).
+- After the last session goes idle, Vigil asks the **sleep gate** (below). Only if it says yes does a **grace period** (default 30 s) start: the countdown you see ("Sleeping in 0:24") and the notification with **Cancel** / **Keep awake**. A new prompt, any keyboard, mouse or trackpad input, or opening the lid cancels it (checked every second) and Vigil goes back to *Připraveno*.
+- If the gate says no, there is no countdown and no notification: Vigil releases its keep-awake at once, macOS sleeps by your Energy settings, and the island shows *Hotovo · Mac běží normálně*.
+- When the countdown expires: `pmset -a disablesleep 0` is restored **first**, the gate is asked once more with a fresh reading, then `pmset sleepnow`. Always in that order (the executor is a single ordered queue).
 - Ctrl+C fires no `Stop`, so every 10 s Vigil checks each session's PID with `kill(pid, 0)` and drops dead ones. A "working" session with no events for longer than the max duration is dropped too.
 - **Waiting for your answer** (Settings ▸ *When Claude is waiting for an answer*):
   - *Keep awake* (default): a waiting session counts as busy, so you can answer permission prompts and questions from your phone through Claude Code Remote Control while the lid is closed. The island shows *Čeká* in orange. `PostToolUse` (or a new prompt) moves the session back to working once you have answered.
@@ -121,7 +122,18 @@ Claude Code ──hook──▶ hook.sh ──nc -U──▶ vigil.sock ──�
   - *Sleep after a delay*: waiting counts as idle and the grace-period countdown starts.
   - `idle_prompt` is never "waiting": it cannot keep the Mac awake or restart a countdown.
   - Upgrading: a policy still at the old default (*Sleep after a delay*) moves to *Keep awake* once (settings revision 3). A policy you changed yourself is kept, and choosing *Sleep after a delay* again afterwards sticks.
-- *Only sleep if the lid is closed* (default off): with the lid open, Vigil restores normal sleep but does not force it.
+
+### The sleep gate
+
+Every automatic sleep (the countdown after Claude finishes, the end of *+1 h vzhůru*, the maximum wait for an answer, the max keep-awake failsafe, the battery and thermal guards) goes through one pure function, `SleepGate.decide`, over a snapshot read fresh at that moment. Only **Uspat hned** bypasses it.
+
+- **Lid closed and no external display active** (`AppleClamshellState`, and `CGDisplayIsBuiltin` over the active displays): allowed. Nobody can be using the Mac.
+- **Otherwise** (lid open, or closed-lid desktop mode with an external display): not allowed. Vigil only releases its own keep-awake (`disablesleep 0`, drops its IOPM assertions) and hands power management back to macOS.
+- **S otevřeným víkem uspat po nečinnosti** (Settings; *Nikdy* by default, or 5 / 10 / 20 min): with the lid open, a forced sleep is allowed after that long without keyboard, mouse or trackpad input (`CGEventSource.secondsSinceLastEventType(.combinedSessionState, anyInputEventType)`; no Accessibility permission).
+- **Another app keeping the Mac awake** (a `PreventUserIdleDisplaySleep` or `PreventUserIdleSystemSleep` assertion, from `IOPMCopyAssertionsByProcess`: video, calls, presentations) blocks it. Vigil's own assertions, powerd's permanent "Prevent sleep while display is on" and the `caffeinate` Claude Code spawns for itself (a caffeinate whose parent is `claude`) don't count. This rule does not apply with the lid closed and no external display.
+- **No reading yet** (just launched): never force sleep blind.
+- Every decision is logged with its reason (`sleep: lid closed, no external display [countdownExpired]`, `skip: lid open, user active 12 s ago …`, `skip: assertion held by zoom.us`) and kept in History ▸ *Relace* ▸ *Rozhodnutí o spánku* (`sleep-decisions.json`, last 100). The self-test has a *Pojistka uspání* check that prints what the gate reads and would decide right now.
+- This replaces the old *Only sleep if the lid is closed* option. It read a cached lid state, which is how the Mac could be put to sleep while you were using it.
 - While awake, Vigil holds `pmset disablesleep 1` (lid-closed, on battery) **and** IOPM assertions `PreventUserIdleSystemSleep` + `PreventSystemSleep` (idle sleep).
 
 ### Work-time estimate
@@ -152,9 +164,9 @@ A stuck `disablesleep 1` in a backpack is dangerous, so there are several indepe
 
 - **Restore on**: Quit, `SIGTERM`/`SIGINT`/`SIGHUP`, logout/shutdown, and at launch if `SleepDisabled = 1` without an active session. Every 10 s Vigil also re-checks and undoes a stuck value.
 - **Watchdog**: when `disablesleep 1` is set, a detached shell watches the app's PID and runs `sudo -n pmset -a disablesleep 0` if the app dies (crash or `kill -9`). Verified: restored ~0.6 s after `SIGKILL`.
-- **Max keep-awake** (default 8 h): restore and sleep.
-- **Battery guard** (default 5 %, can be turned off): on battery below the threshold, restore normal sleep with a notification, and sleep at once if the lid is closed. With the lid open, macOS takes over sleep instead of Vigil forcing it.
-- **Thermal guard**: `ProcessInfo.thermalState` of `.serious`/`.critical` with the lid closed: restore and sleep immediately.
+- **Max keep-awake** (default 8 h): restore, and sleep if the gate allows.
+- **Battery guard** (default 5 %, can be turned off): on battery below the threshold, restore normal sleep with a notification, and sleep at once if the gate allows (lid closed, no external display). Otherwise macOS takes over sleep instead of Vigil forcing it.
+- **Thermal guard**: `ProcessInfo.thermalState` of `.serious`/`.critical` with the lid closed: restore, and sleep immediately if the gate allows.
 
 ### Privileges: sudoers vs. a privileged helper
 
@@ -178,13 +190,13 @@ For a personal tool the sudoers rule is the simpler trade; if you distribute Vig
 
 ## Settings
 
-Watch Claude Code on/off, launch at login, grace period (10 s to 5 min), maximum keep-awake (1 to 24 h), stuck subagent limit (30 min, 1, 2 or 4 h), low-battery threshold, only-sleep-if-lid-closed, waiting-for-an-answer policy and maximum wait (30 min to 8 h), island content (elapsed time / estimate), "almost done" notification, clear estimate history, install/update/remove hooks, install/remove sleep permission, Dry run, Run self-test, Open log. **Look**: accent colour (green, blue, orange, purple). **Edge notch and usage**: notch on/off, position on the edge, displays (all / main), hover delay, hide in full-screen apps, keyboard shortcut (record a new one, or turn it off), usage notifications, install/remove the status line.
+Watch Claude Code on/off, launch at login, grace period (10 s to 5 min), maximum keep-awake (1 to 24 h), stuck subagent limit (30 min, 1, 2 or 4 h), low-battery threshold, sleep with the lid open after inactivity (never / 5 / 10 / 20 min), waiting-for-an-answer policy and maximum wait (30 min to 8 h), island content (elapsed time / estimate), "almost done" notification, clear estimate history, install/update/remove hooks, install/remove sleep permission, Dry run, Run self-test, Open log. **Look**: accent colour (green, blue, orange, purple). **Edge notch and usage**: notch on/off, position on the edge, displays (all / main), hover delay, hide in full-screen apps, keyboard shortcut (record a new one, or turn it off), usage notifications, install/remove the status line.
 
 **Dry run** goes through the whole flow (working → idle → countdown → restore → sleep) but only logs `would run: pmset …`, and never calls `pmset`. Use *Simulate a session* to watch it happen (the simulated session includes a subagent that outlives the main agent's `Stop`).
 
 While subagents run, the session card reads *Hlavní agent + 2 subagenti*. When every main agent is done but subagents still run, the island keeps counting and the menu bar icon stays in the working state (its tooltip says *Subagents working*).
 
-Data lives in `~/Library/Application Support/Vigil/`: `hook.sh`, `statusline.sh` (+ `statusline.original.json`, `statusline.chain`), `usage.json` (last known limits and per-session model/context), `vigil.sock`, `turns.json` (last 500 finished turns for the work-time estimate), `history.json` (last 50 sessions: project, start, duration, how it ended, most subagents at once and total subagent time), `logs/vigil.log` (rotating, 1 MB × 3). Preferences are in `defaults read cz.krystof.vigil`.
+Data lives in `~/Library/Application Support/Vigil/`: `hook.sh`, `statusline.sh` (+ `statusline.original.json`, `statusline.chain`), `usage.json` (last known limits and per-session model/context), `vigil.sock`, `sleep-decisions.json` (every sleep or skip with its reason, last 100), `turns.json` (last 500 finished turns for the work-time estimate), `history.json` (last 50 sessions: project, start, duration, how it ended, most subagents at once and total subagent time), `logs/vigil.log` (rotating, 1 MB × 3). Preferences are in `defaults read cz.krystof.vigil`.
 
 ## Troubleshooting
 
@@ -198,6 +210,7 @@ Data lives in `~/Library/Application Support/Vigil/`: `hook.sh`, `statusline.sh`
 | Hook commands fail in Claude Code | `hook.sh` missing? Vigil restores it at launch and every 10 s while running. Or click *Install hooks* again. |
 | Usage card says "No limits yet" | Limits arrive only with a Claude.ai Pro/Max login, Claude Code 2.1.80+, and after the first response of a session. `grep usage ~/Library/Application\ Support/Vigil/logs/vigil.log`. Self-test ▸ *Status line* must be green. |
 | My old status line disappeared | Settings ▸ *Status line* ▸ *Remove* restores it exactly (it is in `statusline.original.json`). While installed it is still run through `statusline.chain`. |
+| The Mac went to sleep while I was using it | It should not any more: `grep -E "sleep:|skip:" ~/Library/Application\ Support/Vigil/logs/vigil.log` shows every decision and why, and History ▸ *Rozhodnutí o spánku* lists them. A `pmset -g log` line "Software Sleep" at the same second as a `sleep:` line is Vigil; the log says which gate rule allowed it. |
 | No notification buttons | System Settings ▸ Notifications ▸ Vigil ▸ set the style to *Alerts* to keep the buttons on screen. |
 | Icon hidden on a notched MacBook | Too many menu bar icons: hold ⌘ and drag some away. |
 | `codesign` fails with "detritus not allowed" | The project is in an iCloud-synced folder (Desktop/Documents). `build.sh` builds and signs under `~/Library/Caches/Vigil` (valid), but iCloud re-stamps the copy in `./build` seconds later, so `codesign --verify` on *that* copy fails even though the app launches. Use `./build.sh --install` (a copy in `/Applications` always verifies), or keep the project outside iCloud. |
@@ -241,7 +254,7 @@ swift build                    # debug build (Vigil.app is assembled only by bui
 Vigil --snapshot <dir>         # render the popover, windows and usage card to PNGs, no permissions needed
 ```
 
-Layout: `Sources/VigilCore` (StateMachine, TurnTracker + EtaModel + EtaAccuracy + TaskSignals (work-time estimate), HookServer, PowerController, SettingsInstaller = `ClaudeSettingsMerger` + `HookInstaller` + `SudoersInstaller`, StatusLine (parser) + StatusLineInstaller + StatusLineScript, Usage (limits, pace, rollover, alerts), CzechPlural, ProcessTree, Notifier, BatteryThermalMonitor, Persistence, SelfTest, Logging), `Sources/Vigil` (AppKit shell, SwiftUI popover, AuxWindows, EdgeNotch + UsageCardView, HotKey), `Tests/VigilTests` (191 tests: the work-time estimate (task model with steady pace / growing list / one slow task, conditional history percentiles, subagent floor, rounding and "brzy", EMA, accuracy statistics, z/ze and krok/kroky/kroků) and the task parsers against recorded fixtures, state machine incl. multi-session/grace/interrupt/cancel, subagents and the waiting-for-an-answer policy (every `notification_type`, `PermissionRequest`, max wait), pinned-card rules, settings.json merger incl. missing/invalid/idempotent/removal and the v1 → v2 hook upgrade, status line parser with and without `rate_limits`, pace, reset rollover and threshold alerts, Czech plurals, status line installer (no previous / chained / exact restore / idempotent / invalid JSON) and the real `statusline.sh` against a socket, settings migration, PID liveness, socket + real `hook.sh` round trips, watchdog script, localization completeness and the formal Czech tone). Tests never touch your real preferences: each one gets its own `UserDefaults` suite (`TestDefaults`) whose name is an absolute path in a temp directory, removed in tearDown. A plain suite name would not do: cfprefsd leaves an empty `~/Library/Preferences/<suite>.plist` behind even after `removePersistentDomain`.
+Layout: `Sources/VigilCore` (StateMachine, SleepGate + PresenceReader, TurnTracker + EtaModel + EtaAccuracy + TaskSignals (work-time estimate), HookServer, PowerController, SettingsInstaller = `ClaudeSettingsMerger` + `HookInstaller` + `SudoersInstaller`, StatusLine (parser) + StatusLineInstaller + StatusLineScript, Usage (limits, pace, rollover, alerts), CzechPlural, ProcessTree, Notifier, BatteryThermalMonitor, Persistence, SelfTest, Logging), `Sources/Vigil` (AppKit shell, SwiftUI popover, AuxWindows, EdgeNotch + UsageCardView, HotKey), `Tests/VigilTests` (209 tests: the sleep gate (lid closed / open / desktop mode, idle threshold, foreign assertions, Claude's own caffeinate, countdown cancelled by input and by opening the lid, "Uspat hned" always sleeps, guards through the gate), the work-time estimate (task model with steady pace / growing list / one slow task, conditional history percentiles, subagent floor, rounding and "brzy", EMA, accuracy statistics, z/ze and krok/kroky/kroků) and the task parsers against recorded fixtures, state machine incl. multi-session/grace/interrupt/cancel, subagents and the waiting-for-an-answer policy (every `notification_type`, `PermissionRequest`, max wait), pinned-card rules, settings.json merger incl. missing/invalid/idempotent/removal and the v1 → v2 hook upgrade, status line parser with and without `rate_limits`, pace, reset rollover and threshold alerts, Czech plurals, status line installer (no previous / chained / exact restore / idempotent / invalid JSON) and the real `statusline.sh` against a socket, settings migration, PID liveness, socket + real `hook.sh` round trips, watchdog script, localization completeness and the formal Czech tone). Tests never touch your real preferences: each one gets its own `UserDefaults` suite (`TestDefaults`) whose name is an absolute path in a temp directory, removed in tearDown. A plain suite name would not do: cfprefsd leaves an empty `~/Library/Preferences/<suite>.plist` behind even after `removePersistentDomain`.
 
 The Command Line Tools ship without SwiftUI's macro plugin, so views cannot use `@State`; view state lives in `@Observable` objects instead.
 

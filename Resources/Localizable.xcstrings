@@ -12,6 +12,17 @@
         }
       }
     },
+    "%@ is keeping the Mac awake": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ drží Mac vzhůru"
+          }
+        }
+      }
+    },
     "%@: done in about %@": {
       "extractionState": "manual",
       "localizations": {
@@ -783,6 +794,28 @@
         }
       }
     },
+    "Done": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hotovo"
+          }
+        }
+      }
+    },
+    "Done · Mac runs normally": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hotovo · Mac běží normálně"
+          }
+        }
+      }
+    },
     "Dry run": {
       "extractionState": "manual",
       "localizations": {
@@ -1322,6 +1355,17 @@
         }
       }
     },
+    "Left sleep to macOS": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spánek ponechán na macOS"
+          }
+        }
+      }
+    },
     "Let it cool down on a flat surface; Vigil resumes by itself.": {
       "extractionState": "manual",
       "localizations": {
@@ -1340,6 +1384,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Víko"
+          }
+        }
+      }
+    },
+    "Lid %@ · external displays: %d · no input for %d s · other apps keeping it awake: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Víko %@ · externí displeje: %d · bez vstupu %d s · jiné aplikace držící Mac vzhůru: %@"
           }
         }
       }
@@ -1417,6 +1472,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mac vzhůru · %@"
+          }
+        }
+      }
+    },
+    "Mac running hot": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "přehřátý Mac"
           }
         }
       }
@@ -1527,6 +1593,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Potřeba pro využití Claude. Vaše současná status line dál funguje."
+          }
+        }
+      }
+    },
+    "Never": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nikdy"
           }
         }
       }
@@ -1736,17 +1813,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Jednorázové heslo správce, aby Vigil mohl držet Mac vzhůru i se zavřeným víkem."
-          }
-        }
-      }
-    },
-    "Only sleep if the lid is closed": {
-      "extractionState": "manual",
-      "localizations": {
-        "cs": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Uspat jen při zavřeném víku"
           }
         }
       }
@@ -2252,6 +2318,28 @@
         }
       }
     },
+    "Sleep decisions": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozhodnutí o spánku"
+          }
+        }
+      }
+    },
+    "Sleep gate": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pojistka uspání"
+          }
+        }
+      }
+    },
     "Sleep now": {
       "extractionState": "manual",
       "localizations": {
@@ -2292,6 +2380,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Oprávnění ke spánku odebráno"
+          }
+        }
+      }
+    },
+    "Sleep with the lid open after inactivity": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "S otevřeným víkem uspat po nečinnosti"
           }
         }
       }
@@ -2747,6 +2846,28 @@
         }
       }
     },
+    "Vigil only forces sleep when you are away: lid closed without an external display. With the lid open it hands sleep back to macOS, unless there has been no keyboard, mouse or trackpad input for this long.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigil Mac uspí sám jen tehdy, když u něj nejste: víko zavřené a žádný externí displej. S otevřeným víkem nechá spánek na macOS, pokud jste tak dlouho nepoužili klávesnici, myš ani trackpad."
+          }
+        }
+      }
+    },
+    "Vigil put the Mac to sleep": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigil uspal Mac"
+          }
+        }
+      }
+    },
     "Vigil reads your limits from Claude Code's status line. Installing it keeps your current status line working.": {
       "extractionState": "manual",
       "localizations": {
@@ -2776,6 +2897,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vigil odebere své pravidlo v sudoers."
+          }
+        }
+      }
+    },
+    "Vigil would not force sleep now: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigil by teď Mac neuspal: %@"
+          }
+        }
+      }
+    },
+    "Vigil would put the Mac to sleep now: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigil by teď Mac uspal: %@"
           }
         }
       }
@@ -2857,17 +3000,6 @@
         }
       }
     },
-    "With the lid open, Vigil restores normal sleep but does not force it.": {
-      "extractionState": "manual",
-      "localizations": {
-        "cs": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Při otevřeném víku Vigil obnoví běžný spánek, ale uspání nevynutí."
-          }
-        }
-      }
-    },
     "Work-time estimate": {
       "extractionState": "manual",
       "localizations": {
@@ -2945,6 +3077,17 @@
         }
       }
     },
+    "after Claude finished": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "po dokončení práce Claude"
+          }
+        }
+      }
+    },
     "auto-compact soon": {
       "extractionState": "manual",
       "localizations": {
@@ -2952,6 +3095,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "brzy auto-compact"
+          }
+        }
+      }
+    },
+    "closed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "zavřené"
           }
         }
       }
@@ -2967,6 +3121,17 @@
         }
       }
     },
+    "countdown cancelled": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "odpočet zrušen"
+          }
+        }
+      }
+    },
     "done around": {
       "extractionState": "manual",
       "localizations": {
@@ -2974,6 +3139,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "hotovo asi v"
+          }
+        }
+      }
+    },
+    "end of the countdown": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "konec odpočtu"
+          }
+        }
+      }
+    },
+    "external display connected": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "připojený externí displej"
           }
         }
       }
@@ -3077,6 +3264,50 @@
         }
       }
     },
+    "lid closed, no external display": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "víko zavřené, žádný externí displej"
+          }
+        }
+      }
+    },
+    "lid open, last input %@ ago": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "víko otevřené, poslední vstup před %@"
+          }
+        }
+      }
+    },
+    "low battery": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "slabá baterie"
+          }
+        }
+      }
+    },
+    "maximum keep-awake time": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "maximální doba bdění"
+          }
+        }
+      }
+    },
     "needs two weeks of estimates": {
       "extractionState": "manual",
       "localizations": {
@@ -3095,6 +3326,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "bez odhadu"
+          }
+        }
+      }
+    },
+    "no input for %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bez vstupu %@"
+          }
+        }
+      }
+    },
+    "no reading yet": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "zatím bez údajů"
+          }
+        }
+      }
+    },
+    "none": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "žádné"
           }
         }
       }
@@ -3172,6 +3436,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "ve středu"
+          }
+        }
+      }
+    },
+    "open": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "otevřené"
           }
         }
       }
@@ -3304,6 +3579,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "týden"
+          }
+        }
+      }
+    },
+    "you pressed Sleep now": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "stiskli jste Uspat hned"
+          }
+        }
+      }
+    },
+    "you used the Mac during the countdown": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "během odpočtu jste Mac použili"
           }
         }
       }

@@ -59,6 +59,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func tooltip() -> String {
         switch model.island {
         case .off: return L("Vigil is off")
+        case .handedBack: return L("Done · Mac runs normally")
         case .idle: return L("Armed · waiting for Claude")
         case .waiting: return L("Claude is waiting for you")
         case .paused(let reason): return PausedText.title(reason)
