@@ -40,7 +40,8 @@ public struct UISettings: Codable, Equatable, Sendable {
     public var notchDisplays = NotchDisplays.all
     /// How long the pointer rests on the notch before the card opens.
     public var hoverDelay: TimeInterval = 0.18
-    public var hideInFullScreen = true
+    /// Off by default: the notch also works in full-screen apps (⌥⌘U opens the card either way).
+    public var hideInFullScreen = false
     public var shortcut = HotKeySpec()
     public var accent = AccentChoice.green
     public var usageNotifications = true

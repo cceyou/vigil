@@ -35,7 +35,7 @@ import Testing
         #expect(loaded.hasSeenOnboarding)
         #expect(loaded.config.graceSeconds == 120)
         #expect(loaded.ui == UISettings())
-        #expect(loaded.ui.notchEnabled && loaded.ui.hideInFullScreen && loaded.ui.usageNotifications)
+        #expect(loaded.ui.notchEnabled && !loaded.ui.hideInFullScreen && loaded.ui.usageNotifications)
         #expect(loaded.ui.shortcut == HotKeySpec(enabled: true, keyCode: 32, modifiers: 0x0900))
 
         var changed = loaded

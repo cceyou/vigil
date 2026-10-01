@@ -1,4 +1,5 @@
 import AppKit
+import os
 import Carbon.HIToolbox
 import SwiftUI
 import VigilCore
@@ -57,6 +58,14 @@ final class HoverHostingView<Content: View>: NSHostingView<Content> {
         area = a
     }
 
+    /// Throws away the tracking area and makes a new one. Called after every show: a panel ordered out while the
+    /// pointer was inside it never got its "exited", and a fresh area starts clean.
+    func reinstallTracking() {
+        if let area { removeTrackingArea(area) }
+        area = nil
+        updateTrackingAreas()
+    }
+
     override func mouseEntered(with event: NSEvent) { onEnter() }
     override func mouseExited(with event: NSEvent) { onExit() }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -104,68 +113,70 @@ private struct PillGlass: ViewModifier {
 
 /// One notch per display (or only the main one), plus the usage card that slides out of the edge.
 ///
-/// Hover: pointer on the notch for `hoverDelay` (and no mouse button held, so dragging a window to the edge
-/// never opens it) shows the card; leaving both notch and card hides it after 400 ms. A click on the card pins it.
-/// A pinned card closes on a click on the notch, the shortcut, its × button, or a click anywhere outside it
-/// (a left-mouse-down monitor that runs only while pinned: mouse only, never keys, so no Accessibility permission).
-/// Esc closes it only once the user has clicked into the card and it is the key window. See `PinnedCard`.
+/// All behaviour lives in `NotchMachine` (hidden / idle / hovering / open / pinned); this controller only feeds it
+/// events and carries out its effects. Every transition is logged (os.Logger, subsystem cz.krystof.vigil,
+/// category "notch", and Vigil's own log). Visibility is re-evaluated only on a Space change, a screen-parameter
+/// change and wake, debounced by 300 ms, never because one of Vigil's own windows appeared.
 @MainActor
 final class EdgeNotchController {
     private struct Notch {
         let screenID: CGDirectDisplayID
         let panel: EdgePanel
+        let host: HoverHostingView<NotchPill>
         let state: NotchPillState
     }
 
     static let panelSize = NSSize(width: 24, height: 96)
     /// Keeps the notch (and so the hover zone) away from the screen corners (Hot Corners).
     static let cornerMargin: CGFloat = 80
-    private static let hideDelay: TimeInterval = 0.4
+    nonisolated private static let debounce: TimeInterval = 0.3
 
     private let model: AppModel
+    private let logger = Logger(subsystem: "cz.krystof.vigil", category: "notch")
+    private var machine = NotchMachine()
     private var notches: [Notch] = []
     private let cardState = UsageCardState()
     private var cardPanel: EdgePanel?
     private var cardHost: HoverHostingView<AnyView>?
     /// Screen whose notch the card is attached to.
     private var cardScreenID: CGDirectDisplayID?
-    private var pointerInCard = false
-    private var showTimer: Timer?
-    private var hideTimer: Timer?
+    private var timers: [NotchMachine.TimerKind: Timer] = [:]
     private var orderOutWork: DispatchWorkItem?
-    /// Re-checks full-screen state every 1.5 s: entering or leaving full screen does not always post a
-    /// notification Vigil gets, and a window resized to fill the screen posts none at all.
-    private var visibilityTimer: Timer?
-    /// Last decision per display, for the self-test and the log.
-    private(set) var visibility: [CGDirectDisplayID: NotchVisibility] = [:]
+    private var visibilityWork: DispatchWorkItem?
+    private var watchdogTimer: Timer?
     private var shortcutToken: UInt32?
     /// Outside-click monitors (global + local), installed only while the card is pinned.
     private var outsideClickMonitors: [Any] = []
     private var observers: [NSObjectProtocol] = []
+    /// Last visibility decision per display, for the self-test and the log.
+    private(set) var visibility: [CGDirectDisplayID: NotchVisibility] = [:]
 
     init(model: AppModel) {
         self.model = model
+        machine.hoverDelay = model.settings.ui.hoverDelay
         let nc = NotificationCenter.default
         let ws = NSWorkspace.shared.notificationCenter
         observers.append(nc.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.rebuild() }
+            MainActor.assumeIsolated { self?.screensChanged() }
         })
-        for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
-            observers.append(ws.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                // Full-screen transitions finish a moment after the notification.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { MainActor.assumeIsolated { self?.updateFullScreenVisibility() } }
-            })
-        }
-        visibilityTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateFullScreenVisibility() }
+        observers.append(ws.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleVisibilityCheck("Space changed") }
+        })
+        observers.append(ws.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleVisibilityCheck("wake") }
+        })
+        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.runWatchdog() }
         }
     }
 
     // MARK: settings
 
     func apply() {
+        machine.hoverDelay = ui.hoverDelay
         rebuild()
         registerShortcut()
+        scheduleVisibilityCheck("settings", delay: 0)
     }
 
     private var ui: UISettings { model.settings.ui }
@@ -176,8 +187,141 @@ final class EdgeNotchController {
         let spec = ui.shortcut
         guard spec.enabled else { return }
         shortcutToken = HotKeyCenter.shared.register(keyCode: spec.keyCode, modifiers: spec.modifiers) { [weak self] in
-            self?.toggleFromShortcut()
+            guard let self else { return }
+            if !self.machine.cardShown { self.cardScreenID = self.defaultScreenID() }
+            self.send(.shortcut)
         }
+    }
+
+    // MARK: the machine
+
+    private func send(_ input: NotchMachine.Input) {
+        for effect in machine.handle(input) { perform(effect) }
+        cardState.pinned = machine.phase == .pinned
+    }
+
+    private func perform(_ effect: NotchMachine.Effect) {
+        switch effect {
+        case .showNotch:
+            for n in notches where !n.panel.isVisible { n.panel.orderFrontRegardless() }
+        case .hideNotch:
+            for n in notches {
+                n.state.hovering = false
+                n.panel.orderOut(nil)
+            }
+        case .reinstallTracking:
+            for n in notches { n.host.reinstallTracking() }
+            cardHost?.reinstallTracking()
+        case .showCard:
+            showCard()
+        case .hideCard:
+            hideCard()
+        case .makeCardKey:
+            cardPanel?.makeKey()
+        case .startTimer(let kind, let token, let delay):
+            timers[kind]?.invalidate()
+            timers[kind] = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated { self?.send(.timer(kind, token: token)) }
+            }
+        case .cancelTimers:
+            timers.values.forEach { $0.invalidate() }
+            timers = [:]
+        case .watchOutsideClicks(let on):
+            setOutsideClickMonitor(on)
+        case .log(let line):
+            logger.notice("\(line, privacy: .public)")
+            Log.shared.info("notch: \(line)")
+        }
+    }
+
+    // MARK: visibility
+
+    private func screensChanged() {
+        rebuild()
+        scheduleVisibilityCheck("screens changed")
+    }
+
+    /// Debounced: Space-switch animations and wake post several notifications in a row.
+    private func scheduleVisibilityCheck(_ reason: String, delay: TimeInterval = EdgeNotchController.debounce) {
+        visibilityWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.evaluateVisibility(reason) } }
+        visibilityWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func evaluateVisibility(_ reason: String) {
+        let windows = Self.windowEntries()
+        for n in notches {
+            guard let screen = NSScreen.screens.first(where: { $0.displayID == n.screenID }) else { continue }
+            let snapshot = Self.spaceSnapshot(for: screen, windows: windows)
+            let fullScreen = FullScreenDetector.isNativeFullScreen(snapshot)
+            let app = FullScreenDetector.appRevealStrip(snapshot)?.owner ?? NSWorkspace.shared.frontmostApplication?.localizedName
+            visibility[n.screenID] = NotchVisibility.decide(enabled: ui.notchEnabled, onThisDisplay: true,
+                                                            hideInFullScreen: ui.hideInFullScreen, fullScreen: fullScreen,
+                                                            fullScreenApp: fullScreen ? app : nil)
+        }
+        // One machine drives all notches: the main (or card) display decides.
+        let id = cardScreenID ?? defaultScreenID()
+        let allowed = ui.notchEnabled && !notches.isEmpty && (id.flatMap { visibility[$0] }?.isVisible ?? true)
+        if allowed != machine.visibilityAllowed || machine.notchShown != allowed {
+            perform(.log("visibility check (\(reason)): \(allowed ? "show" : "hide") – \(id.flatMap { visibility[$0] }?.logText ?? "no notch")"))
+        }
+        send(.visibility(allowed: allowed))
+    }
+
+    /// Twice a second: does what is on screen match the machine? (It resets after a second of disagreement.)
+    private func runWatchdog() {
+        let cardOnScreen = cardPanel?.isVisible ?? false
+        let notchOnScreen = notches.contains { $0.panel.isVisible }
+        // A card that is still sliding out (orderOut pending) counts as the state it is heading to.
+        let effectiveCard = orderOutWork != nil && !machine.cardShown ? false : cardOnScreen
+        send(.watchdog(cardOnScreen: effectiveCard, notchOnScreen: notches.isEmpty ? machine.notchShown : notchOnScreen, now: Date()))
+    }
+
+    /// On-screen windows of the current Space(s), front to back, without Vigil's own: its notch and card must never
+    /// change what the check sees. Owner, pid, layer, alpha and bounds need no Screen Recording permission.
+    static func windowEntries() -> [WindowEntry] {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return [] }
+        let me = ProcessInfo.processInfo.processIdentifier
+        return list.compactMap { w in
+            guard let pid = w[kCGWindowOwnerPID as String] as? Int32, pid != me,
+                  let dict = w[kCGWindowBounds as String] as? NSDictionary, let bounds = CGRect(dictionaryRepresentation: dict) else { return nil }
+            return WindowEntry(owner: w[kCGWindowOwnerName as String] as? String ?? "", pid: pid,
+                               layer: w[kCGWindowLayer as String] as? Int ?? 0, alpha: w[kCGWindowAlpha as String] as? Double ?? 1,
+                               bounds: bounds)
+        }
+    }
+
+    static func spaceSnapshot(for screen: NSScreen, windows: [WindowEntry]) -> SpaceSnapshot {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+        let f = screen.frame
+        let display = CGRect(x: f.minX, y: primaryHeight - f.maxY, width: f.width, height: f.height) // CG: top-left origin
+        return SpaceSnapshot(display: display, windows: windows, ownPID: ProcessInfo.processInfo.processIdentifier)
+    }
+
+    /// One line per display for the self-test: visible or why not, the frontmost app, the full-screen state.
+    func statusReport() -> String {
+        let front = NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
+        let windows = Self.windowEntries()
+        if notches.isEmpty { return L("Notch is off") + " · " + L("frontmost app: %@", front) }
+        return notches.map { n -> String in
+            let screen = NSScreen.screens.first { $0.displayID == n.screenID }
+            let fullScreen = screen.map { FullScreenDetector.isNativeFullScreen(Self.spaceSnapshot(for: $0, windows: windows)) } ?? false
+            let state: String
+            switch visibility[n.screenID] ?? .visible {
+            case .visible: state = n.panel.isVisible ? L("Notch visible") : L("Notch should be visible but is not on screen")
+            case .hiddenFullScreen(let app): state = L("Notch hidden: %@ is in full screen (⌥⌘U still opens the card)", app ?? "?")
+            case .disabled: state = L("Notch is off")
+            case .notOnThisDisplay: state = L("No notch on this display")
+            }
+            return state + " · " + L("frontmost app: %@", front) + " · " + (fullScreen ? L("full-screen Space") : L("not full screen"))
+                + " · " + L("state: %@", machine.phase.rawValue)
+        }.joined(separator: "\n")
+    }
+
+    /// For the self-test: what is on screen matches the state machine.
+    var notchHealthy: Bool {
+        (notches.contains { $0.panel.isVisible }) == machine.notchShown || notches.isEmpty
     }
 
     // MARK: notches
@@ -188,9 +332,13 @@ final class EdgeNotchController {
         return ui.notchDisplays == .main ? Array(screens.prefix(1)) : screens
     }
 
-    /// Keeps one notch per target display. Existing panels are only moved, never replaced: a notch panel created
-    /// while a full-screen Space is active (screen parameters change on every wake from sleep) stayed visible on
-    /// full-screen Spaces but never received another mouse event there. Reusing the panels avoids that.
+    private func defaultScreenID() -> CGDirectDisplayID? {
+        let main = NSScreen.screens.first?.displayID
+        return notch(main ?? 0) != nil ? main : notches.first?.screenID ?? main
+    }
+
+    /// Keeps one notch per target display. Existing panels are only moved, never replaced: a panel created while a
+    /// full-screen Space is active stayed visible there but never received another mouse event.
     private func rebuild() {
         let screens = targetScreens()
         let wanted = Set(screens.compactMap(\.displayID))
@@ -206,15 +354,18 @@ final class EdgeNotchController {
             let state = NotchPillState()
             let panel = EdgePanel(contentRect: frame)
             let host = HoverHostingView(rootView: NotchPill(state: state))
-            host.onEnter = { [weak self] in self?.notchEntered(screenID: id) }
-            host.onExit = { [weak self] in self?.notchExited(screenID: id) }
-            host.onClick = { [weak self] in self?.notchClicked(screenID: id) }
+            host.onEnter = { [weak self] in self?.pointerEnteredNotch(id) }
+            host.onExit = { [weak self] in self?.pointerExitedNotch(id) }
+            host.onClick = { [weak self] in
+                guard let self else { return }
+                if !self.machine.cardShown { self.cardScreenID = id }
+                self.send(.notchClick)
+            }
             panel.contentView = host
-            panel.orderFrontRegardless()
-            notches.append(Notch(screenID: id, panel: panel, state: state))
+            if machine.notchShown { panel.orderFrontRegardless() }
+            notches.append(Notch(screenID: id, panel: panel, host: host, state: state))
         }
-        updateFullScreenVisibility()
-        if cardState.shown { positionCard() }
+        if machine.cardShown { positionCard() }
     }
 
     /// Flush with the visible frame's right edge (so a Dock on the right keeps the notch just inside it),
@@ -231,131 +382,15 @@ final class EdgeNotchController {
 
     private func notch(_ id: CGDirectDisplayID) -> Notch? { notches.first { $0.screenID == id } }
 
-    private func updateFullScreenVisibility() {
-        let windows = Self.windowEntries()
-        for n in notches {
-            guard let screen = NSScreen.screens.first(where: { $0.displayID == n.screenID }) else { continue }
-            let snapshot = Self.spaceSnapshot(for: screen, windows: windows)
-            let fullScreen = FullScreenDetector.isNativeFullScreen(snapshot)
-            let app = FullScreenDetector.appRevealStrip(snapshot)?.owner ?? NSWorkspace.shared.frontmostApplication?.localizedName
-            let decision = NotchVisibility.decide(enabled: ui.notchEnabled, onThisDisplay: true, hideInFullScreen: ui.hideInFullScreen,
-                                                  fullScreen: fullScreen, fullScreenApp: fullScreen ? app : nil)
-            if visibility[n.screenID] != decision {
-                Log.shared.info("notch: \(decision.logText) (display \(n.screenID))")
-            }
-            visibility[n.screenID] = decision
-            if !decision.isVisible {
-                if n.panel.isVisible { n.panel.orderOut(nil) }
-                n.state.hovering = false
-                // A pinned card (or one opened with the shortcut) stays: ⌥⌘U works in full screen too.
-                if cardScreenID == n.screenID, cardState.shown, !cardState.pinned { hideCard() }
-            } else if !n.panel.isVisible {
-                n.panel.orderFrontRegardless()
-            }
-        }
-        // Self-heal: a card that thinks it is shown but whose panel is gone would swallow the next hover.
-        // (showCard orders the panel in immediately, and a pending hide has already set `shown` to false.)
-        if cardState.shown, let panel = cardPanel, !panel.isVisible {
-            cardState.shown = false
-            cardState.pinned = false
-        }
+    private func pointerEnteredNotch(_ id: CGDirectDisplayID) {
+        notch(id)?.state.hovering = true
+        if !machine.cardShown { cardScreenID = id }
+        send(.enterNotch(mouseButtonsDown: NSEvent.pressedMouseButtons != 0))
     }
 
-    /// On-screen windows of the current Space(s), front to back. Owner, pid, layer, alpha and bounds need no
-    /// Screen Recording permission (titles would).
-    static func windowEntries() -> [WindowEntry] {
-        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return [] }
-        return list.compactMap { w in
-            guard let dict = w[kCGWindowBounds as String] as? NSDictionary, let bounds = CGRect(dictionaryRepresentation: dict) else { return nil }
-            return WindowEntry(owner: w[kCGWindowOwnerName as String] as? String ?? "", pid: w[kCGWindowOwnerPID as String] as? Int32 ?? 0,
-                               layer: w[kCGWindowLayer as String] as? Int ?? 0, alpha: w[kCGWindowAlpha as String] as? Double ?? 1,
-                               bounds: bounds)
-        }
-    }
-
-    static func spaceSnapshot(for screen: NSScreen, windows: [WindowEntry]) -> SpaceSnapshot {
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
-        let f = screen.frame
-        let display = CGRect(x: f.minX, y: primaryHeight - f.maxY, width: f.width, height: f.height) // CG: top-left origin
-        return SpaceSnapshot(display: display, windows: windows, ownPID: ProcessInfo.processInfo.processIdentifier)
-    }
-
-    /// One line per display for the self-test: visible or why not, the frontmost app, the full-screen state.
-    func statusReport() -> String {
-        updateFullScreenVisibility()
-        let front = NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
-        let windows = Self.windowEntries()
-        if notches.isEmpty { return L("Notch is off") + " · " + L("frontmost app: %@", front) }
-        return notches.map { n -> String in
-            let screen = NSScreen.screens.first { $0.displayID == n.screenID }
-            let fullScreen = screen.map { FullScreenDetector.isNativeFullScreen(Self.spaceSnapshot(for: $0, windows: windows)) } ?? false
-            let state: String
-            switch visibility[n.screenID] ?? .visible {
-            case .visible: state = n.panel.isVisible ? L("Notch visible") : L("Notch should be visible but is not on screen")
-            case .hiddenFullScreen(let app): state = L("Notch hidden: %@ is in full screen (⌥⌘U still opens the card)", app ?? "?")
-            case .disabled: state = L("Notch is off")
-            case .notOnThisDisplay: state = L("No notch on this display")
-            }
-            return state + " · " + L("frontmost app: %@", front) + " · " + (fullScreen ? L("full-screen Space") : L("not full screen"))
-        }.joined(separator: "\n")
-    }
-
-    /// For the self-test: true unless the notch should be visible and is not.
-    var notchHealthy: Bool {
-        notches.allSatisfy { n in visibility[n.screenID]?.isVisible == false || n.panel.isVisible }
-    }
-
-    // MARK: hover
-
-    private func notchEntered(screenID: CGDirectDisplayID) {
-        guard let n = notch(screenID) else { return }
-        n.state.hovering = true
-        hideTimer?.invalidate()
-        // Someone dragging a window (or a selection) to the edge: never open.
-        guard NSEvent.pressedMouseButtons == 0 else { return }
-        showTimer?.invalidate()
-        showTimer = Timer.scheduledTimer(withTimeInterval: ui.hoverDelay, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, self.notch(screenID)?.state.hovering == true, NSEvent.pressedMouseButtons == 0 else { return }
-                self.handle(.hover, screenID: screenID)
-            }
-        }
-    }
-
-    private func notchExited(screenID: CGDirectDisplayID) {
-        notch(screenID)?.state.hovering = false
-        showTimer?.invalidate()
-        scheduleHide()
-    }
-
-    private func notchClicked(screenID: CGDirectDisplayID) {
-        showTimer?.invalidate()
-        handle(.notchClick, screenID: screenID)
-    }
-
-    /// Single entry point for everything that shows, pins or closes the card.
-    private func handle(_ trigger: PinnedCard.Trigger, screenID: CGDirectDisplayID? = nil) {
-        switch PinnedCard.reaction(to: trigger, shown: cardState.shown, pinned: cardState.pinned) {
-        case .none: break
-        case .show: showCard(on: screenID)
-        case .pin:
-            if !cardState.shown { showCard(on: screenID) }
-            pin()
-        case .close: hideCard()
-        }
-        if PinnedCard.becomesKey(on: trigger), cardState.shown { cardPanel?.makeKey() }
-    }
-
-    private func scheduleHide() {
-        hideTimer?.invalidate()
-        guard cardState.shown, !cardState.pinned else { return }
-        hideTimer = Timer.scheduledTimer(withTimeInterval: Self.hideDelay, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, !self.cardState.pinned, !self.pointerInCard,
-                      !self.notches.contains(where: { $0.state.hovering }) else { return }
-                self.hideCard()
-            }
-        }
+    private func pointerExitedNotch(_ id: CGDirectDisplayID) {
+        notch(id)?.state.hovering = false
+        send(.exitNotch)
     }
 
     // MARK: card
@@ -364,20 +399,14 @@ final class EdgeNotchController {
         if let cardPanel, let cardHost { return (cardPanel, cardHost) }
         let panel = EdgePanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 400))
         panel.becomesKeyOnClick = true
-        panel.onEscape = { [weak self, weak panel] in self?.handle(.escape(cardIsKey: panel?.isKeyWindow ?? false)) }
+        panel.onEscape = { [weak self, weak panel] in self?.send(.escape(cardIsKey: panel?.isKeyWindow ?? false)) }
         let root = AnyView(UsageCardContainer(model: model, state: cardState,
-                                              onClick: { [weak self] in self?.handle(.clickInCard) },
-                                              onClose: { [weak self] in self?.handle(.closeButton) }))
+                                              onClick: { [weak self] in self?.send(.cardClick) },
+                                              onClose: { [weak self] in self?.send(.closeButton) }))
         let host = HoverHostingView(rootView: root)
         host.needsKeyOnClick = true
-        host.onEnter = { [weak self] in
-            self?.pointerInCard = true
-            self?.hideTimer?.invalidate()
-        }
-        host.onExit = { [weak self] in
-            self?.pointerInCard = false
-            self?.scheduleHide()
-        }
+        host.onEnter = { [weak self] in self?.send(.enterCard) }
+        host.onExit = { [weak self] in self?.send(.exitCard) }
         panel.contentView = host
         cardPanel = panel
         cardHost = host
@@ -398,66 +427,53 @@ final class EdgeNotchController {
         if panel.frame != frame { panel.setFrame(frame, display: true) }
     }
 
-    func showCard(on screenID: CGDirectDisplayID?) {
+    private func showCard() {
         orderOutWork?.cancel()
+        orderOutWork = nil
         let (panel, _) = ensureCard()
-        cardScreenID = screenID ?? NSScreen.screens.first?.displayID
+        if cardScreenID == nil { cardScreenID = defaultScreenID() }
         positionCard()
         panel.orderFrontRegardless()
         withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { cardState.shown = true }
     }
 
-    func hideCard() {
-        showTimer?.invalidate()
-        hideTimer?.invalidate()
-        unpin()
+    private func hideCard() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { cardState.shown = false }
+        orderOutWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
-                guard let self, !self.cardState.shown else { return }
-                self.cardPanel?.orderOut(nil)
+                guard let self else { return }
+                self.orderOutWork = nil
+                if !self.machine.cardShown { self.cardPanel?.orderOut(nil) }
             }
         }
         orderOutWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
     }
 
     /// Keeps the panel sized to its content (sessions come and go) while it is visible.
     func refresh() {
-        if cardState.shown { positionCard() }
-    }
-
-    private func pin() {
-        guard !cardState.pinned else { return }
-        cardState.pinned = true
-        hideTimer?.invalidate()
-        updateOutsideClickMonitor()
-    }
-
-    private func unpin() {
-        cardState.pinned = false
-        updateOutsideClickMonitor()
+        if machine.cardShown { positionCard() }
     }
 
     /// Left mouse-downs only. The global monitor sees clicks in other apps; the local one sees clicks in Vigil's
     /// own windows (menu bar icon, popover) except the card and the notches, which handle their own clicks.
-    private func updateOutsideClickMonitor() {
-        let wanted = PinnedCard.watchesOutsideClicks(shown: cardState.shown, pinned: cardState.pinned)
-        if wanted, outsideClickMonitors.isEmpty {
+    private func setOutsideClickMonitor(_ on: Bool) {
+        if on, outsideClickMonitors.isEmpty {
             if let global = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown, handler: { [weak self] _ in
-                MainActor.assumeIsolated { self?.handle(.mouseDownOutside) }
+                MainActor.assumeIsolated { self?.send(.mouseDownOutside) }
             }) {
                 outsideClickMonitors.append(global)
             }
             if let local = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown, handler: { [weak self] event in
                 MainActor.assumeIsolated {
-                    if let self, !self.isEdgeWindow(event.window) { self.handle(.mouseDownOutside) }
+                    if let self, !self.isEdgeWindow(event.window) { self.send(.mouseDownOutside) }
                 }
                 return event
             }) {
                 outsideClickMonitors.append(local)
             }
-        } else if !wanted, !outsideClickMonitors.isEmpty {
+        } else if !on, !outsideClickMonitors.isEmpty {
             outsideClickMonitors.forEach(NSEvent.removeMonitor)
             outsideClickMonitors = []
         }
@@ -466,11 +482,6 @@ final class EdgeNotchController {
     private func isEdgeWindow(_ window: NSWindow?) -> Bool {
         guard let window else { return false }
         return window === cardPanel || notches.contains { $0.panel === window }
-    }
-
-    private func toggleFromShortcut() {
-        let main = NSScreen.screens.first?.displayID
-        handle(.shortcut, screenID: notch(main ?? 0) != nil ? main : notches.first?.screenID ?? main)
     }
 }
 

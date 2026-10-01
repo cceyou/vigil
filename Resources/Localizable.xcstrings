@@ -3572,6 +3572,17 @@
         }
       }
     },
+    "state: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "stav: %@"
+          }
+        }
+      }
+    },
     "statusline.sh misbehaved (exit %d, no output)": {
       "extractionState": "manual",
       "localizations": {
