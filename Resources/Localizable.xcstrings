@@ -502,6 +502,17 @@
         }
       }
     },
+    "Chat in the Claude app shows up here only with your next work in Claude Code": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat v aplikaci Claude se tu projeví až při další práci v Claude Code"
+          }
+        }
+      }
+    },
     "Checks": {
       "extractionState": "manual",
       "localizations": {
@@ -750,13 +761,13 @@
         }
       }
     },
-    "Data from %@ — run Claude Code to refresh": {
+    "Data from %@": {
       "extractionState": "manual",
       "localizations": {
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Data z %@ — pro aktualizaci spusťte Claude Code"
+            "value": "Data z %@"
           }
         }
       }
@@ -823,6 +834,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Zkušební režim"
+          }
+        }
+      }
+    },
+    "Edge notch": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notch na okraji"
           }
         }
       }
@@ -1641,6 +1663,17 @@
         }
       }
     },
+    "No notch on this display": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na tomto displeji notch není"
+          }
+        }
+      }
+    },
     "No task list": {
       "extractionState": "manual",
       "localizations": {
@@ -1692,6 +1725,50 @@
           "stringUnit": {
             "state": "translated",
             "value": "Notch na okraji obrazovky"
+          }
+        }
+      }
+    },
+    "Notch hidden: %@ is in full screen (⌥⌘U still opens the card)": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notch skrytý: %@ je na celé obrazovce (⌥⌘U kartu otevře i tak)"
+          }
+        }
+      }
+    },
+    "Notch is off": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notch je vypnutý"
+          }
+        }
+      }
+    },
+    "Notch should be visible but is not on screen": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notch má být vidět, ale na obrazovce není"
+          }
+        }
+      }
+    },
+    "Notch visible": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notch je vidět"
           }
         }
       }
@@ -2087,13 +2164,13 @@
         }
       }
     },
-    "Reset": {
+    "Reset · 0 %": {
       "extractionState": "manual",
       "localizations": {
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Obnoveno"
+            "value": "Obnoveno · 0 %"
           }
         }
       }
@@ -3165,6 +3242,28 @@
         }
       }
     },
+    "frontmost app: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "aplikace v popředí: %@"
+          }
+        }
+      }
+    },
+    "full-screen Space": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "plocha na celou obrazovku"
+          }
+        }
+      }
+    },
     "history": {
       "extractionState": "manual",
       "localizations": {
@@ -3359,6 +3458,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "žádné"
+          }
+        }
+      }
+    },
+    "not full screen": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "není na celou obrazovku"
           }
         }
       }

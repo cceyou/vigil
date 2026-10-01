@@ -21,15 +21,19 @@ public struct StatusLineSnapshot: Equatable, Sendable {
     public var contextPercent: Double?
     public var fiveHour: UsageWindow?
     public var sevenDay: UsageWindow?
+    /// `cost.total_api_duration_ms`: grows only when the session gets a new API response, so it tells a fresh
+    /// rate_limits reading apart from a status line re-run (a timer, a resize) that repeats the old one.
+    public var apiDurationMs: Double?
 
     public init(sessionID: String, cwd: String? = nil, model: String? = nil, contextPercent: Double? = nil,
-                fiveHour: UsageWindow? = nil, sevenDay: UsageWindow? = nil) {
+                fiveHour: UsageWindow? = nil, sevenDay: UsageWindow? = nil, apiDurationMs: Double? = nil) {
         self.sessionID = sessionID
         self.cwd = cwd
         self.model = model
         self.contextPercent = contextPercent
         self.fiveHour = fiveHour
         self.sevenDay = sevenDay
+        self.apiDurationMs = apiDurationMs
     }
 
     public var hasRateLimits: Bool { fiveHour != nil || sevenDay != nil }
@@ -62,7 +66,8 @@ public enum StatusLineParser {
                                   model: model,
                                   contextPercent: context.map(clampPercent),
                                   fiveHour: window(limits?["five_hour"]),
-                                  sevenDay: window(limits?["seven_day"]))
+                                  sevenDay: window(limits?["seven_day"]),
+                                  apiDurationMs: number((payload["cost"] as? [String: Any])?["total_api_duration_ms"]))
     }
 
     private static func window(_ raw: Any?) -> UsageWindow? {

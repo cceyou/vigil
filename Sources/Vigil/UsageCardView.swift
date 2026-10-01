@@ -43,11 +43,19 @@ struct UsageCardView: View {
         VStack(alignment: .leading, spacing: 16) {
             header(usage)
             if usage.hasRateLimits {
+                let stale = usage.freshness(at: model.now).isStale
                 if let five = model.usageWindow(.fiveHour) {
-                    WindowBlock(title: L("Current session"), window: five, kind: .fiveHour, now: model.now)
+                    WindowBlock(title: L("Current session"), window: five, kind: .fiveHour, now: model.now, stale: stale)
                 }
                 if let week = model.usageWindow(.sevenDay) {
-                    WindowBlock(title: L("This week"), window: week, kind: .sevenDay, now: model.now)
+                    WindowBlock(title: L("This week"), window: week, kind: .sevenDay, now: model.now, stale: stale)
+                }
+                if stale {
+                    // Chat in the Claude app counts against the same limits, but only Claude Code reports them.
+                    Label(L("Chat in the Claude app shows up here only with your next work in Claude Code"), systemImage: "bubble.left.and.bubble.right")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(.opacity)
                 }
             } else {
                 emptyState
@@ -97,14 +105,18 @@ struct UsageCardView: View {
         }
     }
 
+    /// By when the numbers were last *new*, not when the status line last re-ran with the same old values.
     private func freshness(_ usage: UsageState) -> String? {
-        guard let updated = usage.updatedAt ?? usage.lastStatusLineAt else { return nil }
-        let age = model.now.timeIntervalSince(updated)
-        if age > 15 * 60 {
-            return L("Data from %@ — run Claude Code to refresh", updated.formatted(date: age > 20 * 3600 ? .abbreviated : .omitted, time: .shortened))
+        switch usage.freshness(at: model.now) {
+        case .none:
+            return nil
+        case .fresh(let age):
+            if age < 60 { return L("updated just now") }
+            return L("updated %@ ago", "\(Int(age / 60)) min")
+        case .stale(let since):
+            let old = model.now.timeIntervalSince(since) > 20 * 3600
+            return L("Data from %@", since.formatted(date: old ? .abbreviated : .omitted, time: .shortened))
         }
-        if age < 60 { return L("updated just now") }
-        return L("updated %@ ago", "\(Int(age / 60)) min")
     }
 
     // MARK: empty state
@@ -171,6 +183,8 @@ private struct WindowBlock: View {
     let window: EffectiveWindow
     let kind: UsageWindowKind
     let now: Date
+    /// Old data: the bar and number are dimmed. A window that has reset is known (0 %) and never dimmed.
+    var stale = false
 
     var body: some View {
         let used = window.usedPercentage
@@ -182,8 +196,10 @@ private struct WindowBlock: View {
                     .font(.system(size: 28, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .contentTransition(.numericText())
+                    .foregroundStyle(dimmed ? .secondary : .primary)
             }
             UsageBar(fraction: used / 100)
+                .opacity(dimmed ? 0.4 : 1)
             Text(resetText).font(.system(size: 11, design: .rounded)).monospacedDigit().foregroundStyle(.secondary)
             if kind == .sevenDay, !window.isReset {
                 Text(paceText).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -191,8 +207,10 @@ private struct WindowBlock: View {
         }
     }
 
+    private var dimmed: Bool { stale && !window.isReset }
+
     private var resetText: String {
-        if window.isReset { return L("Reset") }
+        if window.isReset { return L("Reset · 0 %") }
         if kind == .fiveHour {
             return L("Resets in %@ · %@", UsageFormat.duration(window.resetsAt.timeIntervalSince(now)),
                      window.resetsAt.formatted(date: .omitted, time: .shortened))

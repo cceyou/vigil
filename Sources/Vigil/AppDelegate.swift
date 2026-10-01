@@ -27,6 +27,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         model.onUISettingsChange = { [weak self] in self?.notch.apply() }
         notch.apply()
+        model.notchStatus = { [weak self] in
+            guard let notch = self?.notch else { return (L("Notch is off"), true) }
+            return (notch.statusReport(), notch.notchHealthy)
+        }
         model.start()
         statusController.refresh()
 

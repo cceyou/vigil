@@ -1,0 +1,79 @@
+{
+ "session_id": "fixture-statusline",
+ "transcript_path": "/Users/me/.claude/projects/demo/fixture.jsonl",
+ "cwd": "/Users/me/Projects/demo",
+ "scratchpad_dir": "/Users/me/scratch",
+ "effort": {
+  "level": "medium"
+ },
+ "model": {
+  "id": "claude-opus-5-5",
+  "display_name": "Opus 5.5"
+ },
+ "workspace": {
+  "current_dir": "/Users/me/Projects/demo",
+  "project_dir": "/Users/me/Projects/demo",
+  "added_dirs": []
+ },
+ "version": "2.1.284",
+ "output_style": {
+  "name": "default"
+ },
+ "cost": {
+  "total_cost_usd": 29.727631600000002,
+  "total_duration_ms": 150863467,
+  "total_api_duration_ms": 2972150,
+  "total_lines_added": 2405,
+  "total_lines_removed": 0
+ },
+ "context_window": {
+  "total_input_tokens": 549356,
+  "total_output_tokens": 16,
+  "context_window_size": 1000000,
+  "current_usage": {
+   "input_tokens": 2,
+   "output_tokens": 16,
+   "cache_creation_input_tokens": 735,
+   "cache_read_input_tokens": 548619
+  },
+  "used_percentage": 55,
+  "remaining_percentage": 45
+ },
+ "exceeds_200k_tokens": true,
+ "prompt_cache": {
+  "warm": true,
+  "caching_observed": true,
+  "ttl": "1h",
+  "expires_at": 1790861932,
+  "requests": 209,
+  "misses": 2,
+  "expected_rebuilds": 0,
+  "hit_ratio": 0.9795876404912266,
+  "cache_write_tokens": 1354675,
+  "miss_recache_tokens": 835166,
+  "last_miss_at": 1790857526,
+  "last_miss_cause": {
+   "causes": [
+    "ttl_expired_1h"
+   ]
+  },
+  "miss_causes": {
+   "ttl_expired_1h": 2
+  },
+  "recache_tokens_if_cold": 548621
+ },
+ "fast_mode": false,
+ "thinking": {
+  "enabled": true
+ },
+ "rate_limits": {
+  "five_hour": {
+   "used_percentage": 6,
+   "resets_at": 1790862000
+  },
+  "seven_day": {
+   "used_percentage": 40,
+   "resets_at": 1790982000
+  }
+ }
+}

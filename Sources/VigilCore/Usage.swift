@@ -31,6 +31,8 @@ public struct UsageSessionInfo: Codable, Equatable, Sendable {
     public var model: String?
     public var contextPercent: Double?
     public var updatedAt: Date
+    /// Last `cost.total_api_duration_ms` seen for the session.
+    public var apiDurationMs: Double?
 
     public var projectName: String {
         guard let cwd, !cwd.isEmpty else { return "Claude Code" }
@@ -50,8 +52,12 @@ public struct UsageState: Codable, Equatable, Sendable {
     }
 
     public var tracks: [UsageWindowKind: Track] = [:]
-    /// Last status line that carried rate_limits.
+    /// Last status line that carried rate_limits (also re-runs that repeat old values).
     public var updatedAt: Date?
+    /// When the limits were last *new*: the values changed, or they came with a new API response of some session.
+    /// This, not `updatedAt`, is how fresh the numbers are. Chat in the Claude app uses the same limits but
+    /// never reaches Vigil, so while you only chat this stays put and the card says so.
+    public var dataAt: Date?
     /// Last status line of any kind (tells "status line works, but no rate_limits" apart from "nothing arrives").
     public var lastStatusLineAt: Date?
     public var sessions: [String: UsageSessionInfo] = [:]
@@ -61,7 +67,21 @@ public struct UsageState: Codable, Equatable, Sendable {
 
     public init() {}
 
+    private enum CodingKeys: String, CodingKey { case tracks, updatedAt, dataAt, lastStatusLineAt, sessions }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        tracks = try c.decodeIfPresent([UsageWindowKind: Track].self, forKey: .tracks) ?? [:]
+        updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt)
+        // usage.json from before freshness tracking: the best we know is the last rate_limits arrival.
+        dataAt = try c.decodeIfPresent(Date.self, forKey: .dataAt) ?? updatedAt
+        lastStatusLineAt = try c.decodeIfPresent(Date.self, forKey: .lastStatusLineAt)
+        sessions = try c.decodeIfPresent([String: UsageSessionInfo].self, forKey: .sessions) ?? [:]
+    }
+
     public var hasRateLimits: Bool { !tracks.isEmpty }
+
+    public func freshness(at now: Date) -> UsageFreshness { UsageFreshness.evaluate(dataAt: hasRateLimits ? dataAt : nil, now: now) }
 
     public func window(_ kind: UsageWindowKind) -> UsageWindow? { tracks[kind]?.window }
 
@@ -74,7 +94,24 @@ public struct UsageState: Codable, Equatable, Sendable {
     /// Takes one status line update and returns the notifications it causes.
     public mutating func apply(_ snapshot: StatusLineSnapshot, at now: Date) -> [UsageAlert] {
         lastStatusLineAt = now
-        var info = sessions[snapshot.sessionID] ?? UsageSessionInfo(updatedAt: now)
+        let previous = sessions[snapshot.sessionID]
+        // A new API response: this session's API time grew (or a session we have not seen yet reports limits,
+        // which Claude Code only sends after a response).
+        let newResponse: Bool = {
+            guard snapshot.hasRateLimits else { return false }
+            guard let api = snapshot.apiDurationMs else { return false }
+            // Known session without a recorded API time (saved by an older build): unknown, not new.
+            guard let old = previous?.apiDurationMs else { return previous == nil }
+            return api > old
+        }()
+        let changed = UsageWindowKind.allCases.contains { kind in
+            guard let new = kind == .fiveHour ? snapshot.fiveHour : snapshot.sevenDay else { return false }
+            guard let old = tracks[kind]?.window else { return true }
+            return abs(new.usedPercentage - old.usedPercentage) > 0.001 || abs(new.resetsAt.timeIntervalSince(old.resetsAt)) >= 60
+        }
+        if changed || newResponse { dataAt = now }
+        var info = previous ?? UsageSessionInfo(updatedAt: now)
+        if let api = snapshot.apiDurationMs { info.apiDurationMs = api }
         if let cwd = snapshot.cwd, !cwd.isEmpty { info.cwd = cwd }
         if let model = snapshot.model { info.model = model }
         if let ctx = snapshot.contextPercent { info.contextPercent = ctx }
@@ -125,6 +162,26 @@ public struct UsageState: Codable, Equatable, Sendable {
             .map { (id: $0.key, info: $0.value) }
             .sorted { $0.info.updatedAt > $1.info.updatedAt }
     }
+}
+
+/// How fresh the usage numbers are, by when they were last new (`UsageState.dataAt`).
+public enum UsageFreshness: Equatable, Sendable {
+    /// No limits known yet.
+    case none
+    /// New data `age` seconds ago.
+    case fresh(age: TimeInterval)
+    /// Older than `staleAfter`: the card dims the bars and says where the data is from.
+    case stale(since: Date)
+
+    public static let staleAfter: TimeInterval = 10 * 60
+
+    public static func evaluate(dataAt: Date?, now: Date) -> UsageFreshness {
+        guard let dataAt else { return .none }
+        let age = max(0, now.timeIntervalSince(dataAt))
+        return age > staleAfter ? .stale(since: dataAt) : .fresh(age: age)
+    }
+
+    public var isStale: Bool { if case .stale = self { return true } else { return false } }
 }
 
 /// Is the weekly budget being used faster than time passes?

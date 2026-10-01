@@ -100,6 +100,8 @@ final class AppModel {
     @ObservationIgnored private var signalSources: [DispatchSourceSignal] = []
     @ObservationIgnored var onChange: (() -> Void)?
     @ObservationIgnored var onOpenWindow: ((AuxWindow) -> Void)?
+    /// The edge notch's self-test line (set by the app delegate, which owns the notch controller).
+    @ObservationIgnored var notchStatus: (() -> (detail: String, healthy: Bool))?
     /// Settings that the notch / hotkey controllers care about changed.
     @ObservationIgnored var onUISettingsChange: (() -> Void)?
     @ObservationIgnored private let log = Log.shared
@@ -698,7 +700,8 @@ final class AppModel {
         if showing { open(.selfTest) }
         let test = SelfTest(paths: paths, probe: probe,
                             isNotificationAuthorized: { [notifier] in await notifier.isAuthorized() },
-                            awakeHeld: machine.awakeHeld, lidOpenIdleSleep: settings.config.lidOpenIdleSleep)
+                            awakeHeld: machine.awakeHeld, lidOpenIdleSleep: settings.config.lidOpenIdleSleep,
+                            notchReport: notchStatus?())
         Task {
             // hook.sh must exist for the round trip; installing the script alone does not touch settings.json.
             if !FileManager.default.isExecutableFile(atPath: paths.hookScript.path) { try? HookInstaller(paths: paths).installScript() }
@@ -707,8 +710,10 @@ final class AppModel {
             let summary = selfTestResults.map { "\($0.id.rawValue)=\($0.passed ? "PASS" : "FAIL")" }.joined(separator: " ")
             log.info("self-test: \(summary)")
             for r in selfTestResults where !r.passed { log.warning("self-test \(r.id.rawValue): \(r.detail)") }
-            if let gate = selfTestResults.first(where: { $0.id == .sleepGate }) {
-                log.info("self-test sleep gate: \(gate.detail.replacingOccurrences(of: "\n", with: " → "))")
+            for id in [CheckID.sleepGate, .notch] {
+                if let r = selfTestResults.first(where: { $0.id == id }) {
+                    log.info("self-test \(id.rawValue): \(r.detail.replacingOccurrences(of: "\n", with: " → "))")
+                }
             }
             refreshSetup()
         }

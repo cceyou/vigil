@@ -1,7 +1,7 @@
 import Foundation
 
 public enum CheckID: String, CaseIterable, Identifiable, Sendable {
-    case sudoers, hooks, socket, roundTrip, subagents, statusLine, notifications, sleepGate
+    case sudoers, hooks, socket, roundTrip, subagents, statusLine, notifications, sleepGate, notch
     public var id: String { rawValue }
 }
 
@@ -96,16 +96,20 @@ public struct SelfTest: Sendable {
     public var lidOpenIdleSleep: TimeInterval
     /// Reads the presence snapshot (injectable for tests).
     public var readPresence: @Sendable () -> PresenceSnapshot
+    /// The edge notch's state, read on the main thread by the app before the test runs (nil: not available).
+    public var notchReport: (detail: String, healthy: Bool)?
 
     public init(paths: VigilPaths = .standard, probe: SelfTestProbe,
                 isNotificationAuthorized: @escaping @Sendable () async -> Bool, awakeHeld: Bool,
-                lidOpenIdleSleep: TimeInterval = 0, readPresence: @escaping @Sendable () -> PresenceSnapshot = { PresenceReader.snapshot() }) {
+                lidOpenIdleSleep: TimeInterval = 0, readPresence: @escaping @Sendable () -> PresenceSnapshot = { PresenceReader.snapshot() },
+                notchReport: (detail: String, healthy: Bool)? = nil) {
         self.paths = paths
         self.probe = probe
         self.isNotificationAuthorized = isNotificationAuthorized
         self.awakeHeld = awakeHeld
         self.lidOpenIdleSleep = lidOpenIdleSleep
         self.readPresence = readPresence
+        self.notchReport = notchReport
     }
 
     public func run() async -> [CheckResult] {
@@ -118,6 +122,9 @@ public struct SelfTest: Sendable {
         results.append(await checkStatusLine())
         results.append(await checkNotifications())
         results.append(checkSleepGate())
+        if let notchReport {
+            results.append(CheckResult(id: .notch, passed: notchReport.healthy, detail: notchReport.detail, fix: nil))
+        }
         return results
     }
 
