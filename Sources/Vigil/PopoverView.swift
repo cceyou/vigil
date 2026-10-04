@@ -66,7 +66,6 @@ struct PopoverView: View {
         .padding(Metrics.padding)
         .frame(width: Metrics.popoverWidth, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .tint(model.accent)
         .animation(Motion.spring(reduceMotion, response: 0.45), value: model.island.kind)
         .animation(Motion.spring(reduceMotion), value: model.waitingSessions.map(\.id))
         .animation(Motion.spring(reduceMotion), value: model.selectedSession?.id)
@@ -107,12 +106,14 @@ struct MoreMenu: View {
 
 // MARK: - Primary session
 
-/// The selected (or most recently active) session as a MetricRow: name, agents and step, the estimate or the
-/// elapsed time as the big number, a bar with one segment per task, and what is being worked on.
+/// The working session (or, when none works, the most recently active one) as a MetricRow: name, the same
+/// subtitle as the session list, the estimate or the running time as the big number, one bar segment per task,
+/// and what is being worked on. When idle: when the last task finished and how long it took.
 struct PrimarySessionView: View {
     let model: AppModel
 
     private var session: Session? { model.selectedSession }
+    private var summary: UsageCardSession? { session.flatMap { s in model.sessionSummaries.first { $0.id == s.id } } }
 
     /// Only while the session works; the countdown and idle states keep their own look.
     private var eta: SessionEta? {
@@ -120,21 +121,26 @@ struct PrimarySessionView: View {
         return model.eta(for: session.id)
     }
 
+    /// Without a live session, the last finished one from the history (so idle is not an empty row).
+    private var lastRecord: SessionRecord? {
+        session == nil && model.keepAwakeRemaining == nil ? model.history.first : nil
+    }
+
     private var title: String {
-        if let session { return session.projectName }
+        if let session { return ProjectName.display(session.projectName, cwd: session.cwd) }
+        if let lastRecord { return lastRecord.project }
         return model.keepAwakeRemaining != nil ? L("Keeping awake") : L("No Claude Code session")
     }
 
-    private var subtitle: String {
-        guard let session else {
-            return model.enabled ? L("Starts as soon as Claude Code begins working.") : L("Your Mac sleeps normally.")
+    /// The session list's subtitle without the step (the caption below names it): "Opus 5.5 · kontext 31 % · + 2 subagenti".
+    private var subtitle: String? {
+        if var summary {
+            summary.step = nil
+            if let growth = eta?.growth { return summary.subtitle + " · " + Format.addedSteps(growth) }
+            return summary.subtitle
         }
-        var parts = [Format.agents(session.subagents.count)]
-        if let eta, let step = eta.step, let total = eta.total {
-            parts.append(Format.stepOf(step, total).lowercased())
-            if let growth = eta.growth { parts.append(Format.addedSteps(growth)) }
-        }
-        return parts.joined(separator: " · ")
+        if let lastRecord { return lastRecord.maxSubagents > 0 ? "+\u{00A0}" + Format.subagents(lastRecord.maxSubagents) : nil }
+        return model.enabled ? L("Starts as soon as Claude Code begins working.") : L("Your Mac sleeps normally.")
     }
 
     private var running: TimeInterval? {
@@ -151,35 +157,36 @@ struct PrimarySessionView: View {
         if let eta {
             return Value(text: eta.remainingText, secondary: eta.fromHistory || !eta.confident,
                          spoken: L("About %@ left", eta.remainingText.replacingOccurrences(of: "~", with: "")),
-                         caption: running.map { L("running %@", Format.clock($0)) })
+                         caption: running.map { L("running %@", Format.elapsed($0)) })
         }
         if let running {
-            return Value(text: Format.clock(running), spoken: L("Running %@", Format.clock(running)), caption: L("running"))
+            return Value(text: Format.elapsed(running), spoken: L("Running %@", Format.elapsed(running)), caption: L("running"))
         }
         if session == nil, model.machine.awakeHeld, let r = model.awakeRemaining {
-            return Value(text: Format.clock(r), spoken: L("Awake for %@", Format.clock(r)), caption: L("awake for"))
+            return Value(text: Format.elapsed(r), spoken: L("Awake for %@", Format.elapsed(r)), caption: L("awake for"))
         }
         return nil
     }
 
+    /// Task segments with a task list; sleep progress in the countdown or the manual keep-awake hour.
+    /// No bar without a task list: a full gray track would read as finished or empty.
     private var bar: SegmentedProgressBar? {
         if let eta {
-            if let total = eta.total, total > 0 {
-                let done = eta.done ?? 0
-                return SegmentedProgressBar(segments: total, progress: eta.progress ?? Double(done) / Double(total),
-                                            accessibilityLabel: L("Task list"),
-                                            accessibilityValue: Format.stepOf(eta.step ?? done + 1, total))
-            }
-            return SegmentedProgressBar(progress: nil, accessibilityLabel: L("Work in progress"))
+            guard let total = eta.total, total > 0 else { return nil }
+            let done = eta.done ?? 0
+            return SegmentedProgressBar(segments: total, progress: eta.progress ?? Double(done) / Double(total),
+                                        accessibilityLabel: L("Task list"),
+                                        accessibilityValue: Format.stepOf(eta.step ?? done + 1, total))
         }
-        guard model.phase == .working || model.phase == .countdown, session?.state != .waiting else { return nil }
-        return SegmentedProgressBar(progress: model.sleepProgress, accessibilityLabel: L("Progress to sleep"))
+        guard model.phase == .working || model.phase == .countdown, session?.state != .waiting,
+              let progress = model.sleepProgress else { return nil }
+        return SegmentedProgressBar(progress: progress, accessibilityLabel: L("Progress to sleep"))
     }
 
     var body: some View {
         let value = self.value
-        MetricRow(title: title, subtitle: subtitle, prominentTitle: true, value: value?.text,
-                  valueSecondary: value?.secondary ?? false, valueCountsDown: value?.countsDown ?? false,
+        MetricRow(title: title, subtitle: subtitle, prominentTitle: true, titleHelp: summary?.pathHelp,
+                  value: value?.text, valueSecondary: value?.secondary ?? false, valueCountsDown: value?.countsDown ?? false,
                   valueAccessibility: value?.spoken, valueCaption: value?.caption, bar: bar) {
             caption
         }
@@ -198,13 +205,35 @@ struct PrimarySessionView: View {
             WaitingLine { model.openApp(for: session) }
         } else if let eta {
             if eta.fromHistory {
-                Text(L("No task list") + " · " + Format.historyBasis(eta.historyCount ?? 0, eta.historyScope ?? .project).lowercasedFirst)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(Format.estimateBasis(eta.historyCount ?? 0, eta.historyScope ?? .project))
+                    .lineLimit(1).truncationMode(.tail)
             } else {
                 Text(taskLine(eta)).lineLimit(1).truncationMode(.tail)
                     .help(eta.subject ?? "")
             }
+        } else if let finished {
+            Text(finished)
         }
+    }
+
+    /// "Dokončeno v 10:41 · trvalo 12 min" for an idle session or, without one, the last finished session.
+    private var finished: String? {
+        if let session, !session.isWorking, session.state != .waiting {
+            let turn = model.turns.first { $0.project == session.projectName }
+            let end = turn.map { $0.startedAt.addingTimeInterval($0.duration) }
+            // The turn belongs to this idle period only when it ended about when the session went idle.
+            let matching = end.map { abs($0.timeIntervalSince(session.stateSince)) < 300 } ?? false
+            return Self.finishedLine(at: session.stateSince, took: matching ? turn?.duration : nil)
+        }
+        if let lastRecord {
+            return Self.finishedLine(at: lastRecord.startedAt.addingTimeInterval(lastRecord.duration), took: lastRecord.duration)
+        }
+        return nil
+    }
+
+    private static func finishedLine(at date: Date, took: TimeInterval?) -> String {
+        let done = L("Finished at %@", date.formatted(date: .omitted, time: .shortened))
+        return took.map { done + " · " + L("took %@", Format.span($0)) } ?? done
     }
 
     /// "Hotovo asi v 9:59 (±4 min) · Krok 4: stránky sign-in / sign-up".
@@ -246,8 +275,10 @@ struct SessionList: View {
         if !waiting.isEmpty || !others.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(waiting.prefix(2)) { session in
-                    SessionRow(leading: .symbol("exclamationmark.bubble.fill", Theme.warning), title: session.projectName,
-                               subtitle: L("Waiting for your answer")) {
+                    SessionRow(leading: .symbol("exclamationmark.bubble.fill", Theme.warning),
+                               title: ProjectName.display(session.projectName, cwd: session.cwd),
+                               subtitle: L("Waiting for your answer"),
+                               help: session.cwd.map { ($0 as NSString).abbreviatingWithTildeInPath }) {
                         Button(L("Open")) { model.openApp(for: session) }
                             .controlSize(.small)
                             .vigilButtonStyle()
@@ -268,13 +299,8 @@ struct SessionList: View {
 
     @ViewBuilder
     private func row(_ s: UsageCardSession) -> some View {
-        let content = SessionRow(leading: .ring(s.contextPercent), title: s.project, subtitle: s.subtitle) {
-            if let eta = s.eta {
-                TrailingValue(text: eta, emphasized: s.etaConfident, accessibility: s.etaAccessibility)
-                    .help(L("Estimated remaining work time"))
-            } else if let elapsed = s.elapsed {
-                TrailingValue(text: Format.clock(elapsed), emphasized: false, accessibility: L("Running %@", Format.clock(elapsed)))
-            }
+        let content = SessionRow(leading: .ring(s.contextPercent), title: s.project, subtitle: s.subtitle, help: s.pathHelp) {
+            SessionStateValue(session: s)
         }
         if s.working {
             Button { model.selectedSessionID = s.id } label: { content }
@@ -295,13 +321,14 @@ struct StatusLine: View {
     var body: some View {
         let env = model.environment
         HStack(spacing: 16) {
-            let lid = env.lidClosed ? L("Closed (lid)") : L("Open (lid)")
-            StatusInline(symbol: env.lidClosed ? "laptopcomputer.slash" : "laptopcomputer", text: lid,
-                         accessibility: L("Lid: %@", lid))
-            StatusInline(symbol: batterySymbol(env), text: env.batteryPercent.map { "\($0) %" } ?? "—",
+            StatusInline(symbol: env.lidClosed ? "laptopcomputer.slash" : "laptopcomputer",
+                         text: env.lidClosed ? L("Lid closed") : L("Lid open"),
+                         accessibility: env.lidClosed ? L("Lid closed") : L("Lid open"))
+            let battery = batterySymbol(env)
+            StatusInline(symbol: battery, text: env.batteryPercent.map { "\($0) %" } ?? "—",
+                         trailingSymbol: env.isCharging && !battery.hasSuffix(".bolt") ? "bolt.fill" : nil,
                          tint: batteryTint(env), accessibility: batteryAccessibility(env))
-            StatusInline(symbol: env.thermal.rawValue >= ThermalLevel.serious.rawValue ? "thermometer.high" : "thermometer.medium",
-                         text: thermalText(env.thermal), tint: thermalTint(env.thermal),
+            StatusInline(symbol: "thermometer.medium", text: thermalText(env.thermal), tint: thermalTint(env.thermal),
                          accessibility: L("Temperature: %@", thermalText(env.thermal)))
             Spacer(minLength: 0)
         }
@@ -309,13 +336,13 @@ struct StatusLine: View {
 
     private func batterySymbol(_ env: VigilCore.Environment) -> String {
         guard let pct = env.batteryPercent else { return "powerplug" }
-        if env.isCharging { return "battery.100percent.bolt" }
+        // The level decides the symbol; only the full one has a bolt variant, the others get a small bolt after the text.
         switch pct {
         case ..<13: return "battery.0percent"
         case ..<38: return "battery.25percent"
         case ..<63: return "battery.50percent"
         case ..<88: return "battery.75percent"
-        default: return "battery.100percent"
+        default: return env.isCharging ? "battery.100percent.bolt" : "battery.100percent"
         }
     }
 
@@ -352,7 +379,7 @@ struct StatusLine: View {
 
 // MARK: - Usage row
 
-/// "Relace 5 % ▬░░ · Týden 12 % ▬░░ ›": opens the usage card.
+/// "Relace 5 % ▬▬░░░ · Týden 12 % ▬▬░░░ ›": the bars take the available width; the whole row opens the usage card.
 struct UsageRow: View {
     let model: AppModel
 
@@ -364,13 +391,11 @@ struct UsageRow: View {
             HStack(spacing: 16) {
                 if let five { mini(L("Session"), five, stale: stale) }
                 if let week { mini(L("Week"), week, stale: stale) }
-                Spacer(minLength: 0)
                 Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .help(L("Claude usage"))
+        .buttonStyle(HoverRowButtonStyle())
+        .help(L("Opens the usage card"))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L("Claude usage"))
         .accessibilityValue([five.map { L("session %d percent", Int($0.usedPercentage.rounded())) },
@@ -378,6 +403,7 @@ struct UsageRow: View {
             .compactMap { $0 }.joined(separator: ", "))
         .accessibilityHint(L("Opens the usage card"))
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction { model.showUsageCard() }
     }
 
     private func mini(_ label: String, _ window: EffectiveWindow, stale: Bool) -> some View {
@@ -386,9 +412,11 @@ struct UsageRow: View {
             Text("\(label) \(Int(window.usedPercentage.rounded())) %")
                 .font(.footnote).fontDesign(.rounded).monospacedDigit().foregroundStyle(.secondary)
                 .lineLimit(1)
+                .fixedSize()
             SegmentedProgressBar(progress: f, tint: SegmentedProgressBar.usageTint(f), dimmed: stale && !window.isReset)
-                .frame(width: 44)
+                .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
     }
 }
 

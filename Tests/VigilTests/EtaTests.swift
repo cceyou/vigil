@@ -173,7 +173,7 @@ private func hookEvent(_ e: Event) -> HookEvent {
         #expect(EtaFormat.range(105 * 60, 120 * 60) == "1:45–2:00 h")
         #expect(EtaFormat.range(50 * 60, 75 * 60) == "50 min–1:15 h")
         #expect(EtaFormat.range(11 * 60, 12 * 60 + 20) == "~10 min") // both ends round to the same value
-        #expect(EtaFormat.range(20, 4 * 60) == "soon–4 min")
+        #expect(EtaFormat.range(20, 4 * 60) == "up to 4 min")
         let confident = Estimate(low: 600, likely: 720, high: 840, confidence: .medium, basis: .tasks(done: 1, total: 4))
         #expect(EtaFormat.remaining(confident) == "~10 min")
         #expect(EtaFormat.plusMinus(confident) == "±2 min")

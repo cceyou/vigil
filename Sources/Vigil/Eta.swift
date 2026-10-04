@@ -88,9 +88,13 @@ extension Format {
         CzechPreposition.usesZe(total) ? L("Step %d of %d (ze)", step, total) : L("Step %d of %d", step, total)
     }
 
-    /// "Based on 14 similar tasks in the project" / "…across projects".
-    static func historyBasis(_ count: Int, _ scope: HistoryScope) -> String {
-        scope == .project ? L("Based on %d similar tasks in the project", count) : L("Based on %d similar tasks across projects", count)
+    /// "Odhad podle 13 dřívějších úkolů v projektu" / "…ze všech projektů" (Czech: podle 1 dřívějšího úkolu).
+    static func estimateBasis(_ count: Int, _ scope: HistoryScope) -> String {
+        if count == 1 {
+            return scope == .project ? L("Estimate from 1 earlier task in the project") : L("Estimate from 1 earlier task across projects")
+        }
+        return scope == .project ? L("Estimate from %d earlier tasks in the project", count)
+                                 : L("Estimate from %d earlier tasks across projects", count)
     }
 }
 

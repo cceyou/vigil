@@ -63,8 +63,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         case .waiting: return L("Claude is waiting for you")
         case .paused(let reason): return PausedText.title(reason)
         case .working:
-            if model.onlySubagentsWorking { return L("Subagents working · %@", Format.clock(model.workingElapsed)) }
-            return L("Claude is working · %@", Format.clock(model.workingElapsed))
+            if model.onlySubagentsWorking { return L("Subagents working · %@", Format.elapsed(model.workingElapsed)) }
+            return L("Claude is working · %@", Format.elapsed(model.workingElapsed))
         case .countdown(let r): return L("Sleeping in %@", Format.clock(r))
         }
     }

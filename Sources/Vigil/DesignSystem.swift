@@ -208,10 +208,10 @@ extension SectionHeader where Accessory == EmptyView {
 // MARK: - SegmentedProgressBar
 
 /// 4 pt bar on a translucent track. One segment per task (or a single one); each segment fills by its share of
-/// `progress`. `progress == nil` is indeterminate: a soft shimmer, or a slow crossfade under Reduce Motion.
+/// `progress`.
 struct SegmentedProgressBar: View {
     var segments = 1
-    var progress: Double?
+    var progress: Double
     var tint: Color = .primary
     var dimmed = false
     var accessibilityLabel: String = ""
@@ -221,24 +221,17 @@ struct SegmentedProgressBar: View {
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        GeometryReader { g in
-            if let progress {
-                bars(width: g.size.width, progress: min(1, max(0, progress)))
-            } else {
-                indeterminate(width: g.size.width)
-            }
-        }
-        .frame(height: Metrics.barHeight)
-        .opacity(dimmed ? 0.4 : 1)
-        .animation(Motion.spring(reduceMotion, response: 0.6), value: progress)
-        .animation(Motion.spring(reduceMotion), value: segments)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityValue(accessibilityValue ?? progress.map { L("%d percent", Int(($0 * 100).rounded())) } ?? L("In progress"))
-        .accessibilityHidden(accessibilityLabel.isEmpty)
+        let progress = min(1, max(0, self.progress))
+        GeometryReader { g in bars(width: g.size.width, progress: progress) }
+            .frame(height: Metrics.barHeight)
+            .opacity(dimmed ? 0.4 : 1)
+            .animation(Motion.spring(reduceMotion, response: 0.6), value: progress)
+            .animation(Motion.spring(reduceMotion), value: segments)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityValue(accessibilityValue ?? L("%d percent", Int((progress * 100).rounded())))
+            .accessibilityHidden(accessibilityLabel.isEmpty)
     }
-
-    private var track: Color { .primary.opacity(Contrast.track(contrast)) }
 
     private func bars(width: CGFloat, progress: Double) -> some View {
         let n = max(1, segments)
@@ -248,37 +241,12 @@ struct SegmentedProgressBar: View {
             ForEach(0..<n, id: \.self) { i in
                 let fill = min(1, max(0, progress * Double(n) - Double(i)))
                 ZStack(alignment: .leading) {
-                    Capsule().fill(track)
+                    Capsule().fill(.primary.opacity(Contrast.track(contrast)))
                     if fill > 0 {
                         Capsule().fill(tint).frame(width: max(Metrics.barHeight, segment * fill))
                     }
                 }
                 .frame(width: segment)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func indeterminate(width: CGFloat) -> some View {
-        if reduceMotion {
-            TimelineView(.periodic(from: .now, by: 1.4)) { context in
-                let on = Int(context.date.timeIntervalSinceReferenceDate / 1.4) % 2 == 0
-                Capsule().fill(tint.opacity(on ? 0.35 : 0.15))
-                    .animation(.easeInOut(duration: 1.4), value: on)
-            }
-        } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
-                let phase = (context.date.timeIntervalSinceReferenceDate / 2.6).truncatingRemainder(dividingBy: 1)
-                let seg = width * 0.32
-                ZStack(alignment: .leading) {
-                    Capsule().fill(track)
-                    Capsule()
-                        .fill(LinearGradient(colors: [tint.opacity(0), tint.opacity(0.8), tint.opacity(0)],
-                                             startPoint: .leading, endPoint: .trailing))
-                        .frame(width: seg)
-                        .offset(x: -seg + (width + seg) * phase)
-                }
-                .clipShape(Capsule())
             }
         }
     }
@@ -300,6 +268,8 @@ struct MetricRow<Caption: View>: View {
     var subtitle: String? = nil
     /// Session names are headlines; usage labels are quiet.
     var prominentTitle = false
+    /// Tooltip on the title (a session's full path).
+    var titleHelp: String? = nil
     var value: String?
     var valueSecondary = false
     var valueCountsDown = false
@@ -318,6 +288,7 @@ struct MetricRow<Caption: View>: View {
                         .foregroundStyle(prominentTitle ? .primary : .secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .help(titleHelp ?? "")
                     if let subtitle {
                         Text(subtitle)
                             .font(.subheadline)
@@ -365,7 +336,7 @@ struct MetricRow<Caption: View>: View {
 extension MetricRow where Caption == EmptyView {
     init(title: String, subtitle: String? = nil, prominentTitle: Bool = false, value: String?, valueSecondary: Bool = false,
          valueAccessibility: String? = nil, bar: SegmentedProgressBar? = nil) {
-        self.init(title: title, subtitle: subtitle, prominentTitle: prominentTitle, value: value, valueSecondary: valueSecondary,
+        self.init(title: title, subtitle: subtitle, prominentTitle: prominentTitle, titleHelp: nil, value: value, valueSecondary: valueSecondary,
                   valueAccessibility: valueAccessibility, bar: bar) { EmptyView() }
     }
 }
@@ -379,14 +350,19 @@ struct SessionRow<Trailing: View>: View {
     let leading: Leading
     let title: String
     let subtitle: String
+    /// Tooltip on the name: the session's full path.
+    var help: String? = nil
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
         HStack(spacing: 12) {
             Group {
                 switch leading {
-                case .ring(let percent):
+                case .ring(let percent?):
                     ContextRing(percent: percent)
+                case .ring(nil):
+                    // No status line yet: no empty ring, just the same space so names stay aligned.
+                    Color.clear.frame(width: 22, height: 22)
                 case .symbol(let name, let color):
                     Image(systemName: name)
                         .font(.title3)
@@ -398,6 +374,7 @@ struct SessionRow<Trailing: View>: View {
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.subheadline.weight(.semibold)).lineLimit(1).truncationMode(.middle)
+                    .help(help ?? "")
                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -426,6 +403,43 @@ struct TrailingValue: View {
     }
 }
 
+/// A session row's state on the right: the estimate (or the running time) while working, "Čeká" in orange when
+/// Claude waits for an answer, "Nečinná" when idle.
+struct SessionStateValue: View {
+    let session: UsageCardSession
+
+    var body: some View {
+        if session.waiting {
+            Text(L("Waiting"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.warning)
+                .accessibilityLabel(L("Waiting for your answer"))
+        } else if session.working {
+            if let eta = session.eta {
+                TrailingValue(text: eta, emphasized: session.etaConfident, accessibility: session.etaAccessibility)
+                    .help(L("Estimated remaining work time"))
+            } else if let elapsed = session.elapsed {
+                TrailingValue(text: Format.elapsed(elapsed), emphasized: false,
+                              accessibility: L("Running %@", Format.elapsed(elapsed)))
+            }
+        } else {
+            Text(L("Idle (session)"))
+                .font(.subheadline)
+                .foregroundStyle(.tertiary)
+        }
+    }
+}
+
+/// How a project is named in the lists: the folder name, or "~ (domovská složka)" for the home folder
+/// (instead of the user name).
+enum ProjectName {
+    static func display(_ name: String, cwd: String?) -> String {
+        guard let cwd else { return name }
+        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+        return URL(fileURLWithPath: cwd).standardizedFileURL.path == home ? L("~ (home folder)") : name
+    }
+}
+
 struct ContextRing: View {
     let percent: Double?
     @SwiftUI.Environment(\.colorSchemeContrast) private var contrast
@@ -451,21 +465,30 @@ struct ContextRing: View {
 
 // MARK: - StatusInline
 
-/// SF Symbol + secondary text; colored only when the value is abnormal.
+/// SF Symbol + secondary text; colored only when the value is abnormal. All symbols share one scale, weight
+/// and frame, aligned to the text baseline.
 struct StatusInline: View {
     let symbol: String
     let text: String
+    /// A small bolt after the text (charging, when the battery symbol has no bolt variant for its level).
+    var trailingSymbol: String? = nil
     var tint: Color? = nil
     var accessibility: String
     var help: String? = nil
 
     var body: some View {
-        HStack(spacing: 4) {
+        Label {
+            HStack(spacing: 2) {
+                Text(text).monospacedDigit().numericTransition().lineLimit(1)
+                if let trailingSymbol { Image(systemName: trailingSymbol).imageScale(.small) }
+            }
+        } icon: {
             Image(systemName: symbol)
-                .symbolRenderingMode(.hierarchical)
+                .symbolRenderingMode(.monochrome)
+                .imageScale(.medium)
                 .contentTransition(.symbolEffect(.replace))
-            Text(text).monospacedDigit().numericTransition().lineLimit(1)
         }
+        .labelStyle(StatusLabelStyle())
         .font(.footnote)
         .foregroundStyle(tint ?? .secondary)
         .help(help ?? accessibility)
@@ -474,15 +497,52 @@ struct StatusInline: View {
     }
 }
 
+/// Icon in a fixed 18 pt frame on the text baseline, so lid, battery and thermometer line up.
+private struct StatusLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            configuration.icon.frame(width: 18, alignment: .center)
+            configuration.title
+        }
+    }
+}
+
+/// A whole row as a button: no chrome, a soft highlight under the pointer (the usage row in the popover).
+struct HoverRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { HoverRow(configuration: configuration) }
+
+    /// A reference holder: `@State` is a macro in the current SDK and the Command Line Tools ship no SwiftUI
+    /// macro plugin, so the hover flag lives in a `@StateObject`.
+    private final class Hover: ObservableObject { @Published var on = false }
+
+    private struct HoverRow: View {
+        let configuration: ButtonStyleConfiguration
+        @StateObject private var hover = Hover()
+        private var hovering: Bool { hover.on }
+        var body: some View {
+            configuration.label
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.primary.opacity(configuration.isPressed ? 0.1 : hovering ? 0.06 : 0))
+                        .padding(.horizontal, -8).padding(.vertical, -6)
+                )
+                .contentShape(Rectangle())
+                .onHover { hover.on = $0 }
+                .animation(.easeOut(duration: 0.12), value: hovering)
+        }
+    }
+}
+
 // MARK: - FooterBar
 
-/// "Mac vzhůru · 7:35:17" and the two actions: identical in the popover and the usage card.
+/// "Mac vzhůru · 1 h 59 min" (only while the Mac is held awake) and the two actions: identical in the popover
+/// and the usage card. Neutral glass buttons; never tinted with the accent.
 struct FooterBar: View {
     let model: AppModel
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(model.vigilLine)
+            Text(model.vigilLine ?? " ")
                 .font(.footnote.weight(.medium))
                 .fontDesign(.rounded)
                 .monospacedDigit()
@@ -490,17 +550,19 @@ struct FooterBar: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .numericTransition()
+                .accessibilityHidden(model.vigilLine == nil)
             Spacer(minLength: 4)
-            Button { model.keepAwake() } label: { Text("+1 h").fontDesign(.rounded) }
+            Button { model.keepAwake() } label: { Label { Text("1 h").fontDesign(.rounded) } icon: { Image(systemName: "plus") } }
                 .disabled(!model.enabled)
-                .help(L("Keep awake for 1 h"))
-                .accessibilityLabel(L("Keep awake for 1 h"))
+                .help(L("Keep the Mac awake for another hour"))
+                .accessibilityLabel(L("Keep the Mac awake for another hour"))
             Button { model.sleepNow() } label: { Label(L("Sleep"), systemImage: "moon.fill") }
-                .help(L("Sleep now"))
-                .accessibilityLabel(L("Sleep now"))
+                .help(L("Put the Mac to sleep now"))
+                .accessibilityLabel(L("Put the Mac to sleep now"))
         }
         .controlSize(.small)
         .vigilButtonStyle()
+        .tint(nil)
     }
 }
 

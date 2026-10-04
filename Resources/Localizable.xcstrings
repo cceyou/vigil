@@ -1036,6 +1036,50 @@
         }
       }
     },
+    "Estimate from %d earlier tasks across projects": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odhad podle %d dřívějších úkolů ze všech projektů"
+          }
+        }
+      }
+    },
+    "Estimate from %d earlier tasks in the project": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odhad podle %d dřívějších úkolů v projektu"
+          }
+        }
+      }
+    },
+    "Estimate from 1 earlier task across projects": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odhad podle 1 dřívějšího úkolu ze všech projektů"
+          }
+        }
+      }
+    },
+    "Estimate from 1 earlier task in the project": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odhad podle 1 dřívějšího úkolu v projektu"
+          }
+        }
+      }
+    },
     "Estimate history": {
       "extractionState": "manual",
       "localizations": {
@@ -1087,6 +1131,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pojistka: po této době se obnoví běžný spánek a Mac se uspí."
+          }
+        }
+      }
+    },
+    "Finished at %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dokončeno v %@"
           }
         }
       }
@@ -1344,6 +1399,17 @@
         }
       }
     },
+    "Idle (session)": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nečinná"
+          }
+        }
+      }
+    },
     "In progress": {
       "extractionState": "manual",
       "localizations": {
@@ -1487,6 +1553,17 @@
         }
       }
     },
+    "Keep the Mac awake for another hour": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nechat Mac vzhůru ještě 1 hodinu"
+          }
+        }
+      }
+    },
     "Keep the Mac awake while Claude works, then sleep it.": {
       "extractionState": "manual",
       "localizations": {
@@ -1582,6 +1659,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Víko %@ · externí displeje: %d · bez vstupu %d s · jiné aplikace držící Mac vzhůru: %@"
+          }
+        }
+      }
+    },
+    "Lid closed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Víko zavřené"
+          }
+        }
+      }
+    },
+    "Lid open": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Víko otevřené"
           }
         }
       }
@@ -2336,6 +2435,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fialová"
+          }
+        }
+      }
+    },
+    "Put the Mac to sleep now": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uspat Mac hned"
           }
         }
       }
@@ -3440,6 +3550,17 @@
         }
       }
     },
+    "Waiting for the first response": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Čeká na první odpověď"
+          }
+        }
+      }
+    },
     "Waiting for you": {
       "extractionState": "manual",
       "localizations": {
@@ -4177,6 +4298,28 @@
         }
       }
     },
+    "took %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "trvalo %@"
+          }
+        }
+      }
+    },
+    "up to %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "do %@"
+          }
+        }
+      }
+    },
     "updated %@ ago": {
       "extractionState": "manual",
       "localizations": {
@@ -4239,6 +4382,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "během odpočtu jste Mac použili"
+          }
+        }
+      }
+    },
+    "~ (home folder)": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "~ (domovská složka)"
           }
         }
       }

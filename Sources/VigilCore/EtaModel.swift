@@ -263,12 +263,13 @@ public enum EtaFormat {
         return m < 60 ? "\(m) min" : String(format: "%d:%02d h", m / 60, m % 60)
     }
 
-    /// "5–15 min", "1:45–2:00 h", "50 min–1:15 h"; collapses to "~12 min" when both ends round the same.
+    /// "5–15 min", "1:45–2:00 h", "50 min–1:15 h", "up to 4 min"; collapses to "~12 min" when both ends round the same.
     public static func range(_ low: TimeInterval, _ high: TimeInterval) -> String {
         let lo = rounded(low), hi = rounded(high)
         if lo == hi { return approx(high) }
         guard let hi else { return L("soon") }
-        guard let lo else { return "\(L("soon"))–\(clock(hi))" }
+        // The lower end rounds below a minute: "up to 15 min" (Czech "do 15 min"), never "soon–15 min".
+        guard let lo else { return L("up to %@", clock(hi)) }
         let lm = Int(lo / 60), hm = Int(hi / 60)
         if lm < 60 && hm < 60 { return "\(lm)–\(hm) min" }
         if lm >= 60 { return String(format: "%d:%02d–%d:%02d h", lm / 60, lm % 60, hm / 60, hm % 60) }

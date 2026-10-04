@@ -4,7 +4,10 @@ import VigilCore
 /// A Claude Code session as the usage card lists it.
 struct UsageCardSession: Identifiable, Equatable {
     var id: String
+    /// Display name ("~ (domovská složka)" for the home folder).
     var project: String
+    /// Full working directory, for the tooltip.
+    var path: String? = nil
     var model: String?
     var contextPercent: Double?
     var working: Bool
@@ -13,21 +16,28 @@ struct UsageCardSession: Identifiable, Equatable {
     /// Work-time estimate ("~12 min", "5–15 min").
     var eta: String? = nil
     var etaConfident = false
+    var subagents = 0
     /// Claude asked a question or a permission and waits for the user.
     var waiting = false
     /// How long the session has been busy (nil when it is not working).
     var elapsed: TimeInterval? = nil
 
-    /// "Opus 5.5 · krok 4/7 · kontext 42 %".
+    /// "Opus 5.5 · krok 4/7 · kontext 42 % · + 2 subagenti"; "Čeká na první odpověď" before any status line.
     var subtitle: String {
-        var parts = [model ?? "Claude Code"]
+        var parts: [String] = []
+        if let model { parts.append(model) }
         if let step { parts.append(L("step %@", step)) }
         if let ctx = contextPercent {
             parts.append(L("context %@", "\(Int(ctx.rounded())) %"))
             if ctx >= 80 { parts.append(L("auto-compact soon")) }
         }
+        if parts.isEmpty { parts.append(L("Waiting for the first response")) }
+        if subagents > 0 { parts.append("+\u{00A0}" + Format.subagents(subagents)) }
         return parts.joined(separator: " · ")
     }
+
+    /// The path for the tooltip, with the home folder as "~".
+    var pathHelp: String? { path.map { ($0 as NSString).abbreviatingWithTildeInPath } }
 
     /// "Zbývá asi 15 minut" for VoiceOver.
     var etaAccessibility: String? { eta.map { L("About %@ left", $0.replacingOccurrences(of: "~", with: "")) } }
@@ -93,11 +103,8 @@ struct UsageCardView: View {
                 Hairline()
                 VStack(spacing: 8) {
                     ForEach(sessions) { s in
-                        SessionRow(leading: .ring(s.contextPercent), title: s.project, subtitle: s.subtitle) {
-                            if let eta = s.eta {
-                                TrailingValue(text: eta, emphasized: s.etaConfident, accessibility: s.etaAccessibility)
-                                    .help(L("Estimated remaining work time"))
-                            }
+                        SessionRow(leading: .ring(s.contextPercent), title: s.project, subtitle: s.subtitle, help: s.pathHelp) {
+                            SessionStateValue(session: s)
                         }
                     }
                 }

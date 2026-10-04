@@ -27,12 +27,12 @@ enum Snapshot {
         struct State { let name: String; let apply: (AppModel) -> Void }
         let states: [State] = [
             State(name: "working-tasks") { $0.previewScenario(.etaTasks); $0.previewUsage(.data) },
+            State(name: "working-no-tasklist") { $0.previewScenario(.etaHistory); $0.previewUsage(.data) },
             State(name: "working-no-estimate") { $0.previewScenario(.working); $0.previewUsage(.data) },
             State(name: "waiting") { $0.previewScenario(.waiting); $0.previewUsage(.data) },
             State(name: "countdown") { $0.previewScenario(.countdown); $0.previewUsage(.data) },
             State(name: "idle") { $0.previewScenario(.idle); $0.previewUsage(.data) },
             State(name: "multi") { $0.previewScenario(.multi); $0.previewUsage(.data) },
-            State(name: "idle-setup") { $0.previewScenario(.idleSetup); $0.previewUsage(.empty) },
         ]
 
         func render(_ view: AnyView, _ variant: Variant, size: NSSize? = nil, padded: Bool = true, to name: String) async {
@@ -113,8 +113,9 @@ extension AppModel {
 
     func previewScenario(_ scenario: PreviewScenario) {
         let now = Date()
-        func hook(_ kind: HookKind, _ id: String, _ project: String, agent: String? = nil, type: String? = nil) -> Event {
-            .hook(HookEvent(kind: kind, sessionID: id, cwd: "/Users/me/Projects/\(project)", pid: 1, agentID: agent, agentType: type))
+        func hook(_ kind: HookKind, _ id: String, _ project: String, agent: String? = nil, type: String? = nil,
+                  cwd: String? = nil) -> Event {
+            .hook(HookEvent(kind: kind, sessionID: id, cwd: cwd ?? "/Users/me/Projects/\(project)", pid: 1, agentID: agent, agentType: type))
         }
         let env = VigilCore.Environment(lidClosed: false, onBattery: false, batteryPercent: 87, thermal: .nominal, isCharging: true)
         var setup = SetupStatus(sudoers: true, hooks: true, notifications: true, loginItem: true, socket: true, statusLine: true)
@@ -127,10 +128,14 @@ extension AppModel {
                 _ = m.handle(hook(.subagentStart, "a", "alwayson", agent: "x2", type: "code-reviewer"), at: now.addingTimeInterval(-200))
                 _ = m.handle(.keepAwake, at: now.addingTimeInterval(-5))
             case .multi:
+                // a works (with usage data), b works in the home folder with a subagent, c finished and has no
+                // status line data yet.
+                let home = FileManager.default.homeDirectoryForCurrentUser.path
                 _ = m.handle(hook(.userPromptSubmit, "a", "alwayson"), at: now.addingTimeInterval(-4008))
-                _ = m.handle(hook(.userPromptSubmit, "b", "website"), at: now.addingTimeInterval(-900))
-                _ = m.handle(hook(.subagentStart, "b", "website", agent: "y1", type: "Explore"), at: now.addingTimeInterval(-60))
-                _ = m.handle(hook(.userPromptSubmit, "c", "rasinova-residence"), at: now.addingTimeInterval(-120))
+                _ = m.handle(hook(.userPromptSubmit, "b", "home", cwd: home), at: now.addingTimeInterval(-900))
+                _ = m.handle(hook(.subagentStart, "b", "home", agent: "y1", type: "Explore", cwd: home), at: now.addingTimeInterval(-60))
+                _ = m.handle(hook(.userPromptSubmit, "c", "rasinova-residence-booking-calendar-v2"), at: now.addingTimeInterval(-720))
+                _ = m.handle(hook(.stop, "c", "rasinova-residence-booking-calendar-v2"), at: now.addingTimeInterval(-90))
             case .waiting:
                 _ = m.handle(hook(.userPromptSubmit, "a", "alwayson"), at: now.addingTimeInterval(-1500))
                 _ = m.handle(.hook(HookEvent(kind: .notification, sessionID: "a", cwd: "/Users/me/Projects/alwayson", pid: 1,

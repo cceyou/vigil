@@ -498,22 +498,26 @@ final class AppModel {
         for s in machine.sessions.sorted(by: { $0.lastEventAt > $1.lastEventAt }) {
             let info = usage.sessions[s.id]
             let eta = eta(for: s.id)
-            list.append(UsageCardSession(id: s.id, project: s.projectName, model: info?.model,
+            list.append(UsageCardSession(id: s.id, project: ProjectName.display(s.projectName, cwd: s.cwd), path: s.cwd,
+                                         model: info?.model,
                                          contextPercent: info?.contextPercent, working: s.isWorking,
                                          step: eta?.step.flatMap { step in eta?.total.map { "\(step)/\($0)" } },
                                          eta: eta?.remainingText, etaConfident: eta?.confident ?? false,
+                                         subagents: s.subagents.count,
                                          waiting: s.state == .waiting && s.subagents.isEmpty,
                                          elapsed: s.workingSince.map { now.timeIntervalSince($0) }))
             seen.insert(s.id)
         }
         for (id, info) in usage.recentSessions(at: now, within: 600) where !seen.contains(id) {
-            list.append(UsageCardSession(id: id, project: info.projectName, model: info.model,
+            list.append(UsageCardSession(id: id, project: ProjectName.display(info.projectName, cwd: info.cwd), path: info.cwd,
+                                         model: info.model,
                                          contextPercent: info.contextPercent, working: false))
         }
         return list
     }
 
-    /// The working session the popover's primary row shows.
+    /// The session the popover's primary row shows: a working one (the picked one, else the most recently
+    /// active); only when none works, the most recently active session.
     var selectedSession: Session? {
         if let id = selectedSessionID, let s = workingSessions.first(where: { $0.id == id }) { return s }
         return primarySession
@@ -521,19 +525,12 @@ final class AppModel {
 
     func showUsageCard() { onShowUsageCard?() }
 
-    /// One line about what Vigil does with the Mac right now (the footer of the popover and the usage card).
-    var vigilLine: String {
-        switch island {
-        case .working:
-            if let r = awakeRemaining { return L("Mac awake · %@", Format.clock(r)) }
-            return L("Mac awake")
-        case .countdown(let r): return L("Mac sleeps in %@", Format.clock(r))
-        case .waiting: return L("Claude is waiting for you")
-        case .handedBack: return L("Done · Mac runs normally")
-        case .idle: return L("Vigil is ready")
-        case .off: return L("Vigil is off")
-        case .paused(let reason): return PausedText.title(reason)
-        }
+    /// The footer's left side (popover and usage card): only how long the Mac is held awake. Everything else
+    /// is in the popover header, so the footer stays empty then.
+    var vigilLine: String? {
+        guard machine.awakeHeld, phase != .countdown else { return nil }
+        if let r = awakeRemaining { return L("Mac awake · %@", Format.elapsed(r)) }
+        return L("Mac awake")
     }
 
     /// The popover header's state line and its small symbol. Color only for meaning: accent while active,
@@ -890,6 +887,18 @@ enum Format {
         let s = Int(seconds.rounded(.down))
         let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+    }
+
+    /// A running time without ticking seconds once it is long: "4:12" under 10 min, then "42 min", "1 h 59 min".
+    static func elapsed(_ seconds: TimeInterval) -> String {
+        seconds < 600 ? clock(seconds) : span(seconds)
+    }
+
+    /// A finished duration: "<1 min", "12 min", "1 h 5 min".
+    static func span(_ seconds: TimeInterval) -> String {
+        let m = Int(seconds / 60)
+        if m < 1 { return "<1 min" }
+        return m < 60 ? "\(m) min" : "\(m / 60) h \(m % 60) min"
     }
 
     /// "1 subagent", "3 subagents" (Czech: 1 subagent, 2-4 subagenti, 0 and 5+ subagentů).
