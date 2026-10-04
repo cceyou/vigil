@@ -18,7 +18,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
-        popover.appearance = NSAppearance(named: .darkAqua)
         // Height follows the content (sessions, waiting card, checklist come and go).
         let host = NSHostingController(rootView: PopoverView(model: model))
         host.sizingOptions = .preferredContentSize

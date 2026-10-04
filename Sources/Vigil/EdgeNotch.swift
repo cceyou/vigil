@@ -193,6 +193,13 @@ final class EdgeNotchController {
         }
     }
 
+    /// The popover's usage row: opens the card pinned, like the shortcut (nothing to do when it is already shown).
+    func showCardPinned() {
+        guard !machine.cardShown else { return }
+        cardScreenID = defaultScreenID()
+        send(.shortcut)
+    }
+
     // MARK: the machine
 
     private func send(_ input: NotchMachine.Input) {

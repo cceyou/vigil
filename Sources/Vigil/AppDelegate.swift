@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.statusController.closePopover()
             self?.windows.show(kind)
         }
+        model.onShowUsageCard = { [weak self] in
+            self?.statusController.closePopover()
+            self?.notch.showCardPinned()
+        }
         model.onUISettingsChange = { [weak self] in self?.notch.apply() }
         notch.apply()
         model.notchStatus = { [weak self] in

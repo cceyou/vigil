@@ -2,10 +2,15 @@ import AppKit
 import SwiftUI
 import VigilCore
 
-/// `Vigil --snapshot <dir>` renders the popover, the small windows and the usage card offscreen into PNGs
+/// `Vigil --snapshot <dir>` renders the popover, the usage card and the small windows offscreen into PNGs
 /// (no screen-recording permission needed). Never starts the socket server, timers or any power handling.
+///
+/// Every state is rendered in light, dark and with Reduce Transparency (`vigilForceSolid`), as
+/// `popover-<state>-<variant>.png`, `card-<state>-<variant>.png` and `compare-<state>-<variant>.png` (both side by side).
 @MainActor
 enum Snapshot {
+    enum Variant: String, CaseIterable { case light, dark, solid }
+
     static func run(into directory: String, then finish: @escaping () -> Void) {
         try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         let model = AppModel()
@@ -13,69 +18,69 @@ enum Snapshot {
         let card = UsageCardState()
         card.shown = true
 
-        struct Shot { let name: String; let width: CGFloat?; let apply: (AppModel) -> Void; let view: () -> AnyView }
-        let popover: () -> AnyView = { AnyView(PopoverView(model: model)) }
-        let usageCard: () -> AnyView = {
-            AnyView(UsageCardView(model: model, state: card)
-                .padding(40)
-                .background(LinearGradient(colors: [Color(hex: 0x2B5876), Color(hex: 0x4E4376), Color(hex: 0xC06C84)],
-                                           startPoint: .topLeading, endPoint: .bottomTrailing)))
-        }
-        func window(_ kind: AuxWindow) -> () -> AnyView {
-            { AnyView(AuxWindowRoot(model: model, kind: kind).frame(width: 440)) }
-        }
-        let shots: [Shot] = [
-            Shot(name: "popover-working", width: nil, apply: { $0.previewScenario(.working) }, view: popover),
-            Shot(name: "popover-multi", width: nil, apply: { $0.previewScenario(.multi) }, view: popover),
-            Shot(name: "popover-waiting", width: nil, apply: { $0.previewScenario(.waiting) }, view: popover),
-            Shot(name: "popover-countdown", width: nil, apply: { $0.previewScenario(.countdown) }, view: popover),
-            Shot(name: "popover-keepawake", width: nil, apply: { $0.previewScenario(.keepAwake) }, view: popover),
-            Shot(name: "popover-idle-setup", width: nil, apply: { $0.previewScenario(.idleSetup) }, view: popover),
-            Shot(name: "window-history", width: 440, apply: { $0.previewScenario(.working); $0.historyTab = .sessions }, view: window(.history)),
-            Shot(name: "popover-eta-tasks", width: nil, apply: { $0.previewScenario(.etaTasks) }, view: popover),
-            Shot(name: "popover-eta-history", width: nil, apply: { $0.previewScenario(.etaHistory) }, view: popover),
-            Shot(name: "popover-eta-island", width: nil, apply: {
-                $0.previewSettings { $0.ui.islandContent = .estimate }
-                $0.previewScenario(.etaHistory)
-            }, view: popover),
-            Shot(name: "card-usage-eta", width: nil, apply: {
-                $0.previewSettings { $0.ui.islandContent = .elapsed }
-                $0.previewScenario(.etaTasks); $0.previewUsage(.data)
-            }, view: usageCard),
-            Shot(name: "window-history-accuracy", width: 480, apply: {
-                $0.previewScenario(.etaTasks); $0.historyTab = .accuracy
-            }, view: { AnyView(AuxWindowRoot(model: model, kind: .history).frame(width: 480)) }),
-            Shot(name: "window-settings", width: 440, apply: { $0.previewScenario(.working) }, view: window(.settings)),
-            Shot(name: "window-selftest", width: 440, apply: { $0.previewScenario(.working) }, view: window(.selfTest)),
-            Shot(name: "card-usage", width: nil, apply: { $0.previewScenario(.working); $0.previewUsage(.data) }, view: usageCard),
-            Shot(name: "card-critical", width: nil, apply: { $0.previewScenario(.countdown); $0.previewUsage(.critical) }, view: usageCard),
-            Shot(name: "card-stale", width: nil, apply: { $0.previewScenario(.idleSetup); $0.previewUsage(.stale) }, view: usageCard),
-            Shot(name: "card-empty", width: nil, apply: { $0.previewScenario(.idleSetup); $0.previewUsage(.empty) }, view: usageCard),
-            Shot(name: "card-nolimits", width: nil, apply: { $0.previewScenario(.working); $0.previewUsage(.noLimits) }, view: usageCard),
+        let backdrop = LinearGradient(colors: [Color(hex: 0x2B5876), Color(hex: 0x4E4376), Color(hex: 0xC06C84)],
+                                      startPoint: .topLeading, endPoint: .bottomTrailing)
+        // The real popover gets its glass from NSPopover; here the same surface is drawn around it.
+        let popover = { AnyView(PopoverView(model: model).glassSurface()) }
+        let usageCard = { AnyView(UsageCardView(model: model, state: card)) }
+
+        struct State { let name: String; let apply: (AppModel) -> Void }
+        let states: [State] = [
+            State(name: "working-tasks") { $0.previewScenario(.etaTasks); $0.previewUsage(.data) },
+            State(name: "working-no-estimate") { $0.previewScenario(.working); $0.previewUsage(.data) },
+            State(name: "waiting") { $0.previewScenario(.waiting); $0.previewUsage(.data) },
+            State(name: "countdown") { $0.previewScenario(.countdown); $0.previewUsage(.data) },
+            State(name: "idle") { $0.previewScenario(.idle); $0.previewUsage(.data) },
+            State(name: "multi") { $0.previewScenario(.multi); $0.previewUsage(.data) },
+            State(name: "idle-setup") { $0.previewScenario(.idleSetup); $0.previewUsage(.empty) },
         ]
 
+        func render(_ view: AnyView, _ variant: Variant, size: NSSize? = nil, padded: Bool = true, to name: String) async {
+            let scheme: ColorScheme = variant == .light ? .light : .dark
+            let root = Group {
+                if padded { view.padding(32).background(backdrop) } else { view }
+            }
+            .environment(\.colorScheme, scheme)
+            .environment(\.vigilForceSolid, variant == .solid)
+            .environment(\.vigilSnapshot, true)
+            let host = NSHostingView(rootView: root)
+            host.frame = NSRect(origin: .zero, size: size ?? host.fittingSize)
+            let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+            window.contentView = host
+            host.layoutSubtreeIfNeeded()
+            try? await Task.sleep(for: .milliseconds(250))
+            guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+            host.cacheDisplay(in: host.bounds, to: rep)
+            let path = "\(directory)/\(name).png"
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+            print("wrote \(path)")
+        }
+
         Task {
-            for scheme in [ColorScheme.dark, .light] {
-                for shot in shots {
-                    // The popover and windows are always dark; only the glass card follows the system appearance.
-                    if scheme == .light && !shot.name.hasPrefix("card") { continue }
-                    shot.apply(model)
-                    try? await Task.sleep(for: .milliseconds(200))
-                    let host = NSHostingView(rootView: shot.view().environment(\.colorScheme, scheme))
-                    var size = host.fittingSize
-                    if let w = shot.width { size.width = w }
-                    host.frame = NSRect(origin: .zero, size: size)
-                    let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-                    window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
-                    window.contentView = host
-                    window.backgroundColor = .black
-                    host.layoutSubtreeIfNeeded()
-                    try? await Task.sleep(for: .milliseconds(200))
-                    guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { continue }
-                    host.cacheDisplay(in: host.bounds, to: rep)
-                    let path = "\(directory)/\(shot.name)-\(scheme == .dark ? "dark" : "light").png"
-                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
-                    print("wrote \(path)")
+            for state in states {
+                state.apply(model)
+                try? await Task.sleep(for: .milliseconds(150))
+                for variant in Variant.allCases {
+                    let suffix = "\(state.name)-\(variant.rawValue)"
+                    await render(popover(), variant, to: "popover-\(suffix)")
+                    await render(usageCard(), variant, to: "card-\(suffix)")
+                    let pair = AnyView(HStack(alignment: .top, spacing: 32) { popover(); usageCard() })
+                    await render(pair, variant, to: "compare-\(suffix)")
+                }
+            }
+            let windows: [(String, AuxWindow, (AppModel) -> Void)] = [
+                ("window-settings", .settings, { $0.previewScenario(.working) }),
+                ("window-history", .history, { $0.previewScenario(.working); $0.historyTab = .sessions }),
+                ("window-history-accuracy", .history, { $0.previewScenario(.etaTasks); $0.historyTab = .accuracy }),
+                ("window-selftest", .selfTest, { $0.previewScenario(.working) }),
+            ]
+            for (name, kind, apply) in windows {
+                apply(model)
+                for variant in [Variant.light, .dark] {
+                    let view = AnyView(AuxWindowRoot(model: model, kind: kind).background(Color(nsColor: .windowBackgroundColor)))
+                    await render(view, variant, size: NSSize(width: kind == .history ? 640 : 520, height: 680), padded: false,
+                                 to: "\(name)-\(variant.rawValue)")
                 }
             }
             finish()
@@ -83,7 +88,7 @@ enum Snapshot {
     }
 }
 
-enum PreviewScenario { case working, multi, waiting, countdown, keepAwake, idleSetup, etaTasks, etaHistory }
+enum PreviewScenario { case working, multi, waiting, countdown, keepAwake, idle, idleSetup, etaTasks, etaHistory }
 enum PreviewUsage { case data, critical, stale, empty, noLimits }
 
 extension AppModel {
@@ -135,6 +140,8 @@ extension AppModel {
                 _ = m.handle(hook(.stop, "a", "alwayson"), at: now.addingTimeInterval(-6))
             case .keepAwake:
                 _ = m.handle(.keepAwake, at: now.addingTimeInterval(-3005))
+            case .idle:
+                break
             case .idleSetup:
                 setup = SetupStatus(sudoers: true, hooks: true, notifications: false, loginItem: true, socket: true, statusLine: false)
             case .etaTasks:
@@ -153,7 +160,7 @@ extension AppModel {
         default: events = []
         }
         previewEta(turns: Self.sampleTurns(now: now), events: events, at: now)
-        if scenario == .etaTasks { sessionPage = "a" }
+        selectedSessionID = scenario == .etaTasks ? "a" : nil
     }
 
     /// Session "a" (rasinova-residence) works through a 7-step task list with two subagents; session "b" (code)

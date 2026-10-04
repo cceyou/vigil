@@ -75,8 +75,8 @@ final class AppModel {
     private(set) var turns: [TurnRecord]
     /// Every sleep and skip the sleep gate decided, newest first.
     private(set) var sleepDecisions: [SleepDecisionRecord]
-    /// Index of the working-session page shown in the popover.
-    var sessionPage: String?
+    /// The working session the popover shows as its primary row (picked from the session list); nil = most recent.
+    var selectedSessionID: String?
     /// History window tab: sessions or estimate accuracy.
     var historyTab = HistoryTab.sessions
 
@@ -100,6 +100,8 @@ final class AppModel {
     @ObservationIgnored private var signalSources: [DispatchSourceSignal] = []
     @ObservationIgnored var onChange: (() -> Void)?
     @ObservationIgnored var onOpenWindow: ((AuxWindow) -> Void)?
+    /// Opens the usage card pinned (the popover's usage row; wired to the edge notch controller).
+    @ObservationIgnored var onShowUsageCard: (() -> Void)?
     /// The edge notch's self-test line (set by the app delegate, which owns the notch controller).
     @ObservationIgnored var notchStatus: (() -> (detail: String, healthy: Bool))?
     /// Settings that the notch / hotkey controllers care about changed.
@@ -487,7 +489,10 @@ final class AppModel {
     func usageWindow(_ kind: UsageWindowKind) -> EffectiveWindow? { usage.effective(kind, at: now) }
 
     /// Up to three sessions for the usage card: running sessions first, then recent status lines.
-    var usageSessions: [UsageCardSession] {
+    var usageSessions: [UsageCardSession] { Array(sessionSummaries.prefix(3)) }
+
+    /// Every session the popover and the card can list: Vigil's sessions by activity, then recent status lines.
+    var sessionSummaries: [UsageCardSession] {
         var list: [UsageCardSession] = []
         var seen = Set<String>()
         for s in machine.sessions.sorted(by: { $0.lastEventAt > $1.lastEventAt }) {
@@ -496,14 +501,55 @@ final class AppModel {
             list.append(UsageCardSession(id: s.id, project: s.projectName, model: info?.model,
                                          contextPercent: info?.contextPercent, working: s.isWorking,
                                          step: eta?.step.flatMap { step in eta?.total.map { "\(step)/\($0)" } },
-                                         eta: eta?.remainingText, etaConfident: eta?.confident ?? false))
+                                         eta: eta?.remainingText, etaConfident: eta?.confident ?? false,
+                                         waiting: s.state == .waiting && s.subagents.isEmpty,
+                                         elapsed: s.workingSince.map { now.timeIntervalSince($0) }))
             seen.insert(s.id)
         }
         for (id, info) in usage.recentSessions(at: now, within: 600) where !seen.contains(id) {
             list.append(UsageCardSession(id: id, project: info.projectName, model: info.model,
                                          contextPercent: info.contextPercent, working: false))
         }
-        return Array(list.prefix(3))
+        return list
+    }
+
+    /// The working session the popover's primary row shows.
+    var selectedSession: Session? {
+        if let id = selectedSessionID, let s = workingSessions.first(where: { $0.id == id }) { return s }
+        return primarySession
+    }
+
+    func showUsageCard() { onShowUsageCard?() }
+
+    /// One line about what Vigil does with the Mac right now (the footer of the popover and the usage card).
+    var vigilLine: String {
+        switch island {
+        case .working:
+            if let r = awakeRemaining { return L("Mac awake · %@", Format.clock(r)) }
+            return L("Mac awake")
+        case .countdown(let r): return L("Mac sleeps in %@", Format.clock(r))
+        case .waiting: return L("Claude is waiting for you")
+        case .handedBack: return L("Done · Mac runs normally")
+        case .idle: return L("Vigil is ready")
+        case .off: return L("Vigil is off")
+        case .paused(let reason): return PausedText.title(reason)
+        }
+    }
+
+    /// The popover header's state line and its small symbol. Color only for meaning: accent while active,
+    /// orange when Claude waits for you or a guard paused Vigil, red when the Mac is too hot.
+    var stateCaption: (text: String, symbol: String, color: Color) {
+        switch island {
+        case .working:
+            if workingSessions.isEmpty { return (L("Keeping awake"), "bolt.fill", accent) }
+            return (onlySubagentsWorking ? L("Subagents working") : L("Claude is working"), "bolt.fill", accent)
+        case .countdown(let r): return (L("Going to sleep in %@", Format.clock(r)), "moon.fill", accent)
+        case .waiting: return (L("Waiting for you"), "exclamationmark.bubble.fill", Theme.warning)
+        case .handedBack: return (L("Done · Mac runs normally"), "checkmark.circle", .secondary)
+        case .idle: return (L("Ready"), "bolt", .secondary)
+        case .off: return (L("Off"), "moon.zzz", .secondary)
+        case .paused(let reason): return (PausedText.title(reason), "pause.circle.fill", PausedText.tint(reason))
+        }
     }
 
     // MARK: windows and apps

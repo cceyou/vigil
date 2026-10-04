@@ -67,6 +67,28 @@
         }
       }
     },
+    "%d percent": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d procent"
+          }
+        }
+      }
+    },
+    "%d percent used": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Využito %d procent"
+          }
+        }
+      }
+    },
     "%d subagents": {
       "extractionState": "manual",
       "localizations": {
@@ -91,6 +113,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "%d subagents"
+          }
+        }
+      }
+    },
+    "+%d more": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+%d další"
           }
         }
       }
@@ -201,6 +234,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Subagent, který se po takové době neozve, se přestane sledovat."
+          }
+        }
+      }
+    },
+    "About %@ left": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zbývá asi %@"
           }
         }
       }
@@ -381,6 +425,17 @@
         }
       }
     },
+    "Awake for %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vzhůru ještě %@"
+          }
+        }
+      }
+    },
     "Based on %d similar tasks across projects": {
       "extractionState": "manual",
       "localizations": {
@@ -432,6 +487,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Baterie %@ je pod limitem %@, takže zavřením víka Mac usne. Připojte nabíječku nebo snižte limit v Nastavení."
+          }
+        }
+      }
+    },
+    "Battery %d percent, %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Baterie %d procent, %@"
           }
         }
       }
@@ -695,6 +761,28 @@
         }
       }
     },
+    "Context %d percent": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontext %d procent"
+          }
+        }
+      }
+    },
+    "Context unknown": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontext neznámý"
+          }
+        }
+      }
+    },
     "Context window used": {
       "extractionState": "manual",
       "localizations": {
@@ -816,6 +904,17 @@
         }
       }
     },
+    "Done around %@ (%@)": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hotovo asi v %@ (%@)"
+          }
+        }
+      }
+    },
     "Done · Mac runs normally": {
       "extractionState": "manual",
       "localizations": {
@@ -834,6 +933,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Zkušební režim"
+          }
+        }
+      }
+    },
+    "Duration": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trvání"
           }
         }
       }
@@ -959,6 +1069,17 @@
         }
       }
     },
+    "Failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selhalo"
+          }
+        }
+      }
+    },
     "Failsafe: restore normal sleep and sleep after this long.": {
       "extractionState": "manual",
       "localizations": {
@@ -1047,6 +1168,17 @@
         }
       }
     },
+    "Going to sleep in %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uspávám za %@"
+          }
+        }
+      }
+    },
     "Grace period": {
       "extractionState": "manual",
       "localizations": {
@@ -1098,6 +1230,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Historie"
+          }
+        }
+      }
+    },
+    "History…": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Historie…"
           }
         }
       }
@@ -1197,6 +1340,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Jak dlouho musí ukazatel zůstat na notchi, než se karta otevře."
+          }
+        }
+      }
+    },
+    "In progress": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probíhá"
           }
         }
       }
@@ -1322,6 +1476,17 @@
         }
       }
     },
+    "Keep open": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nechat otevřené"
+          }
+        }
+      }
+    },
     "Keep the Mac awake while Claude works, then sleep it.": {
       "extractionState": "manual",
       "localizations": {
@@ -1417,6 +1582,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Víko %@ · externí displeje: %d · bez vstupu %d s · jiné aplikace držící Mac vzhůru: %@"
+          }
+        }
+      }
+    },
+    "Lid: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Víko: %@"
           }
         }
       }
@@ -1641,6 +1817,17 @@
         }
       }
     },
+    "No battery": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bez baterie"
+          }
+        }
+      }
+    },
     "No change": {
       "extractionState": "manual",
       "localizations": {
@@ -1648,6 +1835,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Beze změny"
+          }
+        }
+      }
+    },
+    "No estimates yet": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zatím žádné odhady"
           }
         }
       }
@@ -1670,6 +1868,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Na tomto displeji notch není"
+          }
+        }
+      }
+    },
+    "No sessions yet": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zatím žádné relace"
           }
         }
       }
@@ -1933,6 +2142,17 @@
         }
       }
     },
+    "Opens the usage card": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otevře kartu využití"
+          }
+        }
+      }
+    },
     "Orange": {
       "extractionState": "manual",
       "localizations": {
@@ -1962,6 +2182,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tempo v pořádku"
+          }
+        }
+      }
+    },
+    "Passed": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prošlo"
           }
         }
       }
@@ -2076,6 +2307,17 @@
         }
       }
     },
+    "Progress to sleep": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Průběh k uspání"
+          }
+        }
+      }
+    },
     "Project": {
       "extractionState": "manual",
       "localizations": {
@@ -2127,6 +2369,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Připraveno"
+          }
+        }
+      }
+    },
+    "Reason": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Důvod"
           }
         }
       }
@@ -2230,6 +2483,17 @@
         }
       }
     },
+    "Result": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Výsledek"
+          }
+        }
+      }
+    },
     "Resumes once Claude is idle again.": {
       "extractionState": "manual",
       "localizations": {
@@ -2285,6 +2549,17 @@
         }
       }
     },
+    "Running %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Běží %@"
+          }
+        }
+      }
+    },
     "Running checks…": {
       "extractionState": "manual",
       "localizations": {
@@ -2303,6 +2578,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Autotest"
+          }
+        }
+      }
+    },
+    "Session": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relace"
           }
         }
       }
@@ -2362,6 +2648,17 @@
         }
       }
     },
+    "Shows this session above": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zobrazí tuto relaci nahoře"
+          }
+        }
+      }
+    },
     "Shows your Claude usage limits at the screen edge. Your current status line keeps working.": {
       "extractionState": "manual",
       "localizations": {
@@ -2380,6 +2677,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Simulovat relaci"
+          }
+        }
+      }
+    },
+    "Sleep": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uspat"
           }
         }
       }
@@ -2516,6 +2824,17 @@
         }
       }
     },
+    "Started": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Začátek"
+          }
+        }
+      }
+    },
     "Starts as soon as Claude Code begins working.": {
       "extractionState": "manual",
       "localizations": {
@@ -2582,6 +2901,17 @@
         }
       }
     },
+    "Step %d: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krok %d: %@"
+          }
+        }
+      }
+    },
     "Stuck subagent limit": {
       "extractionState": "manual",
       "localizations": {
@@ -2604,6 +2934,28 @@
         }
       }
     },
+    "Subagents": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subagenti"
+          }
+        }
+      }
+    },
+    "Subagents working": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pracují subagenti"
+          }
+        }
+      }
+    },
     "Subagents working · %@": {
       "extractionState": "manual",
       "localizations": {
@@ -2611,6 +2963,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Subagenti pracují · %@"
+          }
+        }
+      }
+    },
+    "Task list": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seznam úkolů"
           }
         }
       }
@@ -2626,6 +2989,17 @@
         }
       }
     },
+    "Temperature: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Teplota: %@"
+          }
+        }
+      }
+    },
     "The 5-hour session window has reset.": {
       "extractionState": "manual",
       "localizations": {
@@ -2633,6 +3007,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pětihodinové okno relace se obnovilo."
+          }
+        }
+      }
+    },
+    "The accent only marks that Vigil is active. Warnings stay orange and red.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Barva zvýraznění jen označuje, že Vigil je aktivní. Varování zůstávají oranžová a červená."
           }
         }
       }
@@ -2890,6 +3275,28 @@
         }
       }
     },
+    "Version": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verze"
+          }
+        }
+      }
+    },
+    "View": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zobrazení"
+          }
+        }
+      }
+    },
     "Vigil is off": {
       "extractionState": "manual",
       "localizations": {
@@ -2919,6 +3326,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vigil potřebuje povolit dva příkazy pro správu napájení (pmset disablesleep) bez hesla."
+          }
+        }
+      }
+    },
+    "Vigil never keeps a hot Mac or an almost empty battery awake.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigil nikdy nedrží vzhůru přehřátý Mac ani téměř vybitou baterii."
           }
         }
       }
@@ -3022,6 +3440,17 @@
         }
       }
     },
+    "Waiting for you": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Čeká na vás"
+          }
+        }
+      }
+    },
     "Waiting for your answer": {
       "extractionState": "manual",
       "localizations": {
@@ -3055,6 +3484,17 @@
         }
       }
     },
+    "Week": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Týden"
+          }
+        }
+      }
+    },
     "When": {
       "extractionState": "manual",
       "localizations": {
@@ -3077,6 +3517,17 @@
         }
       }
     },
+    "Work in progress": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Práce probíhá"
+          }
+        }
+      }
+    },
     "Work-time estimate": {
       "extractionState": "manual",
       "localizations": {
@@ -3084,6 +3535,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Odhad doby práce"
+          }
+        }
+      }
+    },
+    "Working…": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pracuji…"
           }
         }
       }
@@ -3172,6 +3634,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "brzy auto-compact"
+          }
+        }
+      }
+    },
+    "awake for": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vzhůru ještě"
           }
         }
       }
@@ -3561,6 +4034,39 @@
         }
       }
     },
+    "running": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "běží"
+          }
+        }
+      }
+    },
+    "running %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "běží %@"
+          }
+        }
+      }
+    },
+    "session %d percent": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "relace %d procent"
+          }
+        }
+      }
+    },
     "soon": {
       "extractionState": "manual",
       "localizations": {
@@ -3700,6 +4206,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "týden"
+          }
+        }
+      }
+    },
+    "week %d percent": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "týden %d procent"
           }
         }
       }

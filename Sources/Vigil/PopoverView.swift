@@ -1,235 +1,123 @@
 import SwiftUI
 import VigilCore
 
-/// The menu bar popover in the "Live Activity" style: island, session card, waiting card, status tiles, actions.
+/// The menu bar popover: one surface (the popover's own system material), grouped by spacing and hairlines,
+/// built from the same pieces as the usage card (DesignSystem.swift).
 struct PopoverView: View {
     @Bindable var model: AppModel
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let accent = model.accent
-        VStack(spacing: 12) {
-            ZStack(alignment: .trailing) {
-                IslandView(state: model.island, accent: accent)
-                    .frame(maxWidth: .infinity)
+        let caption = model.stateCaption
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Vigil", caption: caption.text, symbol: caption.symbol, symbolColor: caption.color) {
                 MoreMenu(model: model)
             }
-            .padding(.bottom, 2)
 
             if let error = model.powerError {
-                NoticeCard(symbol: "exclamationmark.triangle.fill", title: L("Couldn't change sleep settings"), detail: error) {
+                NoticeRow(symbol: "exclamationmark.triangle.fill", tint: Theme.warning,
+                          title: L("Couldn't change sleep settings"), detail: error) {
                     if !model.setup.sudoers {
-                        ActionButton(title: L("Install sleep permission"), busy: model.busy.contains("sudoers"), prominent: true,
-                                     accent: accent) { model.installSudoers() }
+                        BusyButton(title: L("Install sleep permission"), busy: model.busy.contains("sudoers"), prominent: true) {
+                            model.installSudoers()
+                        }
                     }
                 }
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(Motion.move(reduceMotion))
             }
 
             if let reason = model.pausedReason {
-                NoticeCard(symbol: "pause.circle.fill", title: PausedText.title(reason), detail: PausedText.detail(reason, model: model)) {
+                NoticeRow(symbol: "pause.circle.fill", tint: PausedText.tint(reason),
+                          title: PausedText.title(reason), detail: PausedText.detail(reason, model: model)) {
                     if reason == .lowBattery {
-                        ActionButton(title: L("Change battery limit"), accent: accent) { model.open(.settings) }
+                        Button(L("Change battery limit")) { model.open(.settings) }.buttonStyle(.bordered)
                     }
                 }
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(Motion.move(reduceMotion))
             }
 
-            SessionSection(model: model)
-
-            ForEach(model.waitingSessions.prefix(2)) { session in
-                WaitingCard(session: session) { model.openApp(for: session) }
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
-            StatusTiles(environment: model.environment, accent: accent)
-
-            HStack(spacing: 10) {
-                Button(L("+1 h awake")) { model.keepAwake() }
-                    .buttonStyle(CapsuleButtonStyle(fill: .white, foreground: .black))
-                    .disabled(!model.enabled)
-                Button(L("Sleep now")) { model.sleepNow() }
-                    .buttonStyle(CapsuleButtonStyle(fill: Theme.card, foreground: .white))
-            }
+            PrimarySessionView(model: model)
+            SessionList(model: model)
 
             if !model.setup.checklistComplete {
+                Hairline()
                 SetupChecklist(model: model)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .transition(.opacity)
             }
 
-            if let message = model.message {
-                MessageBar(text: message) { model.dismissMessage() }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            Hairline()
+            VStack(alignment: .leading, spacing: 12) {
+                StatusLine(model: model)
+                if model.usage.hasRateLimits {
+                    UsageRow(model: model)
+                }
+                if model.environment.lidClosed && model.environment.onBattery {
+                    BagHint().transition(.opacity)
+                }
+                if let message = model.message {
+                    MessageRow(text: message) { model.dismissMessage() }
+                        .transition(Motion.move(reduceMotion, edge: .bottom))
+                }
             }
 
-            BagHint()
+            Hairline()
+            FooterBar(model: model)
         }
-        .padding(16)
-        .frame(width: 360)
+        .padding(Metrics.padding)
+        .frame(width: Metrics.popoverWidth, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .background(Theme.background)
-        .environment(\.colorScheme, .dark)
-        .tint(accent)
-        .animation(.spring(response: 0.45, dampingFraction: 0.86), value: model.island.kind)
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: model.waitingSessions.map(\.id))
-        .animation(.smooth, value: model.message)
-        .animation(.smooth, value: model.setup)
+        .tint(model.accent)
+        .animation(Motion.spring(reduceMotion, response: 0.45), value: model.island.kind)
+        .animation(Motion.spring(reduceMotion), value: model.waitingSessions.map(\.id))
+        .animation(Motion.spring(reduceMotion), value: model.selectedSession?.id)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth, value: model.message)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth, value: model.setup)
     }
 }
 
-// MARK: - Island
+// MARK: - Header menu
 
-/// Centered black capsule: accent bolt on the left, the most important live value on the right.
-struct IslandView: View {
-    let state: IslandState
-    let accent: Color
-
-    private var text: String {
-        switch state {
-        case .working(let elapsed, let eta): return eta?.remainingText ?? Format.clock(elapsed)
-        case .countdown(let remaining): return L("Sleeps in %@", Format.clock(remaining))
-        case .waiting: return L("Waiting")
-        case .handedBack: return L("Done · Mac runs normally")
-        case .idle: return L("Ready")
-        case .off: return L("Off")
-        case .paused: return L("Paused")
-        }
-    }
-
-    private var color: Color {
-        switch state {
-        case .working(_, let eta): return eta.map { $0.confident ? accent : Color.secondary } ?? accent
-        case .countdown: return accent
-        case .waiting: return Theme.waiting
-        case .handedBack, .idle, .off, .paused: return .secondary
-        }
-    }
-
-    private var width: CGFloat {
-        switch state {
-        case .working, .countdown, .paused: return 210
-        case .idle, .off: return 190
-        case .handedBack: return 270
-        case .waiting: return 150
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(accent)
-                .frame(width: 24, height: 24)
-                .overlay(Image(systemName: "bolt.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(.black))
-            Spacer(minLength: 4)
-            Text(text)
-                .font(.system(size: 15, weight: .semibold))
-                .monospacedDigit()
-                .foregroundStyle(color)
-                .contentTransition(.numericText(countsDown: { if case .countdown = state { return true }; return false }()))
-                .lineLimit(1)
-        }
-        .padding(.leading, 7).padding(.trailing, 14)
-        .frame(width: width, height: 38)
-        .background(Capsule().fill(Color.black))
-        .overlay(Capsule().strokeBorder(Theme.outline, lineWidth: 1))
-        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: width)
-        .animation(.smooth(duration: 0.3), value: text)
-    }
-}
-
-/// "…" in the top right corner: History, Settings, Quit.
+/// ⋯ in the header: Watch Claude Code, History, Settings, Quit.
 struct MoreMenu: View {
     let model: AppModel
     var body: some View {
         Menu {
-            Button(L("History")) { model.open(.history) }
-            Button(L("Settings")) { model.open(.settings) }
+            Toggle(L("Watch Claude Code"), isOn: Binding(get: { model.enabled }, set: { model.setEnabled($0) }))
+            Divider()
+            Button(L("History…")) { model.open(.history) }
+            Button(L("Settings…")) { model.open(.settings) }
+                .keyboardShortcut(",")
             Divider()
             Button(L("Quit")) { model.quit() }
+                .keyboardShortcut("q")
         } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 13, weight: .bold))
+            Image(systemName: "ellipsis.circle")
+                .font(.title3)
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.secondary)
-                .frame(width: 30, height: 30)
-                .background(Theme.card, in: Circle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+        .tint(.secondary)
         .fixedSize()
         .help(L("More"))
+        .accessibilityLabel(L("More"))
     }
 }
 
-// MARK: - Session card(s)
+// MARK: - Primary session
 
-/// One card for the most recently active session, or a horizontally paged stack when several are working.
-struct SessionSection: View {
-    @Bindable var model: AppModel
-
-    var body: some View {
-        let working = model.workingByActivity
-        if working.count > 1 {
-            VStack(spacing: 8) {
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(working) { session in
-                            SessionCard(model: model, session: session)
-                                .containerRelativeFrame(.horizontal)
-                                .id(session.id)
-                        }
-                    }
-                    .scrollTargetLayout()
-                }
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: $model.sessionPage)
-                .scrollIndicators(.hidden)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
-
-                PageDots(ids: working.map(\.id), selected: model.sessionPage ?? working.first?.id, accent: model.accent) { id in
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { model.sessionPage = id }
-                }
-            }
-        } else {
-            SessionCard(model: model, session: model.primarySession)
-        }
-    }
-}
-
-struct PageDots: View {
-    let ids: [String]
-    let selected: String?
-    let accent: Color
-    let select: (String) -> Void
-    var body: some View {
-        HStack(spacing: 7) {
-            ForEach(ids, id: \.self) { id in
-                Button { select(id) } label: {
-                    Capsule()
-                        .fill(id == selected ? Color.white : Theme.track)
-                        .frame(width: id == selected ? 16 : 6, height: 6)
-                        .contentShape(Rectangle().inset(by: -4))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selected)
-    }
-}
-
-struct SessionCard: View {
+/// The selected (or most recently active) session as a MetricRow: name, agents and step, the estimate or the
+/// elapsed time as the big number, a bar with one segment per task, and what is being worked on.
+struct PrimarySessionView: View {
     let model: AppModel
-    let session: Session?
 
-    private var stateLabel: String {
-        switch model.island {
-        case .countdown: return L("Going to sleep")
-        case .off: return L("Off")
-        case .paused: return L("Paused")
-        case .working:
-            if let session, !session.isWorking { return L("Ready") }
-            return model.workingSessions.isEmpty ? L("Keeping awake") : L("Claude is working")
-        case .waiting, .idle: return L("Ready")
-        case .handedBack: return L("Done")
-        }
+    private var session: Session? { model.selectedSession }
+
+    /// Only while the session works; the countdown and idle states keep their own look.
+    private var eta: SessionEta? {
+        guard let session, session.isWorking, model.phase == .working else { return nil }
+        return model.eta(for: session.id)
     }
 
     private var title: String {
@@ -238,333 +126,189 @@ struct SessionCard: View {
     }
 
     private var subtitle: String {
-        if let session { return Format.agents(session.subagents.count) }
-        return model.enabled ? L("Starts as soon as Claude Code begins working.") : L("Your Mac sleeps normally.")
+        guard let session else {
+            return model.enabled ? L("Starts as soon as Claude Code begins working.") : L("Your Mac sleeps normally.")
+        }
+        var parts = [Format.agents(session.subagents.count)]
+        if let eta, let step = eta.step, let total = eta.total {
+            parts.append(Format.stepOf(step, total).lowercased())
+            if let growth = eta.growth { parts.append(Format.addedSteps(growth)) }
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var running: TimeInterval? {
-        if let session {
-            return model.now.timeIntervalSince(session.workingSince ?? session.startedAt)
+        guard let session, session.isWorking else { return nil }
+        return model.now.timeIntervalSince(session.workingSince ?? session.startedAt)
+    }
+
+    private struct Value { var text: String; var secondary = false; var countsDown = false; var spoken: String; var caption: String? }
+
+    private var value: Value? {
+        if model.phase == .countdown, let r = model.countdownRemaining {
+            return Value(text: Format.clock(r), countsDown: true, spoken: L("Sleeps in %@", Format.clock(r)), caption: nil)
         }
-        return model.machine.awakeHeld ? model.awakeElapsed : nil
+        if let eta {
+            return Value(text: eta.remainingText, secondary: eta.fromHistory || !eta.confident,
+                         spoken: L("About %@ left", eta.remainingText.replacingOccurrences(of: "~", with: "")),
+                         caption: running.map { L("running %@", Format.clock($0)) })
+        }
+        if let running {
+            return Value(text: Format.clock(running), spoken: L("Running %@", Format.clock(running)), caption: L("running"))
+        }
+        if session == nil, model.machine.awakeHeld, let r = model.awakeRemaining {
+            return Value(text: Format.clock(r), spoken: L("Awake for %@", Format.clock(r)), caption: L("awake for"))
+        }
+        return nil
     }
 
-    /// Only while the session works; the countdown and idle states keep their own look.
-    private var eta: SessionEta? {
-        guard let session, session.isWorking, model.phase == .working else { return nil }
-        return model.eta(for: session.id)
-    }
-
-    private var steps: SleepTrack.Steps? {
-        guard let eta, let total = eta.total, let done = eta.done else { return nil }
-        return SleepTrack.Steps(done: done, total: total, progress: eta.progress ?? Double(done) / Double(max(1, total)))
-    }
-
-    var body: some View {
-        let accent = model.accent
-        let eta = self.eta
-        Card(padding: 20) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "bolt.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(accent)
-                    Text("Vigil").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
-                    Spacer()
-                    Text(stateLabel).font(.system(size: 13, weight: .semibold)).foregroundStyle(accent)
-                        .contentTransition(.interpolate)
-                }
-
-                Text(title)
-                    .font(.system(size: 22, weight: .bold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .padding(.top, 14)
-                Text(subtitle)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .contentTransition(.numericText())
-                    .padding(.top, 2)
-
-                if let eta {
-                    StepRow(eta: eta, accent: accent)
-                        .padding(.top, 16)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                // While there is an estimate the track is about the work, not about sleep: task segments, or the
-                // indeterminate shimmer without a task list; it ends in a flag.
-                SleepTrack(progress: eta == nil ? model.sleepProgress : nil, accent: accent, steps: steps, finish: eta != nil)
-                    .padding(.top, 18)
-
-                HStack(alignment: .top, spacing: 8) {
-                    if let running {
-                        FooterColumn(label: L("Running"), value: Format.clock(running), alignment: .leading)
-                    } else {
-                        Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
-                    }
-                    if let eta {
-                        // History is only "usually": its value stays secondary. Low confidence is secondary too.
-                        FooterColumn(label: eta.fromHistory ? L("Usually another") : L("Remaining"), value: eta.remainingText,
-                                     alignment: .center, color: eta.fromHistory || !eta.confident ? .secondary : accent)
-                            .transition(.opacity)
-                    }
-                    if let r = model.countdownRemaining, model.phase == .countdown {
-                        FooterColumn(label: L("Sleeps in"), value: Format.clock(r), alignment: .trailing)
-                    } else if let r = model.awakeRemaining {
-                        FooterColumn(label: L("Awake for"), value: Format.clock(r), alignment: .trailing)
-                    } else {
-                        Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
-                    }
-                }
-                .padding(.top, 14)
-                .opacity(running == nil && model.awakeRemaining == nil && model.phase != .countdown ? 0 : 1)
-
-                if model.phase == .countdown {
-                    HStack {
-                        Spacer()
-                        Button(L("Cancel")) { model.cancelCountdown() }
-                            .buttonStyle(PillButtonStyle())
-                    }
-                    .padding(.top, 10)
-                    .transition(.opacity)
-                }
+    private var bar: SegmentedProgressBar? {
+        if let eta {
+            if let total = eta.total, total > 0 {
+                let done = eta.done ?? 0
+                return SegmentedProgressBar(segments: total, progress: eta.progress ?? Double(done) / Double(total),
+                                            accessibilityLabel: L("Task list"),
+                                            accessibilityValue: Format.stepOf(eta.step ?? done + 1, total))
             }
+            return SegmentedProgressBar(progress: nil, accessibilityLabel: L("Work in progress"))
         }
-    }
-}
-
-/// Label above a big value; the footer has up to three (left, center, right).
-struct FooterColumn: View {
-    let label: String
-    let value: String
-    let alignment: HorizontalAlignment
-    var color: Color = .primary
-
-    private var frameAlignment: Alignment {
-        alignment == .leading ? .leading : alignment == .trailing ? .trailing : .center
+        guard model.phase == .working || model.phase == .countdown, session?.state != .waiting else { return nil }
+        return SegmentedProgressBar(progress: model.sleepProgress, accessibilityLabel: L("Progress to sleep"))
     }
 
     var body: some View {
-        VStack(alignment: alignment, spacing: 3) {
-            Text(label).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(size: 20, weight: .bold))
-                .monospacedDigit()
-                .foregroundStyle(color)
-                .contentTransition(.numericText())
-                .minimumScaleFactor(0.7)
+        let value = self.value
+        MetricRow(title: title, subtitle: subtitle, prominentTitle: true, value: value?.text,
+                  valueSecondary: value?.secondary ?? false, valueCountsDown: value?.countsDown ?? false,
+                  valueAccessibility: value?.spoken, valueCaption: value?.caption, bar: bar) {
+            caption
         }
-        .lineLimit(1)
-        .frame(maxWidth: .infinity, alignment: frameAlignment)
     }
-}
 
-/// The rounded box under the title: the task list step, or what the history estimate is based on.
-struct StepRow: View {
-    let eta: SessionEta
-    let accent: Color
-
-    var body: some View {
-        HStack(spacing: 12) {
+    @ViewBuilder private var caption: some View {
+        if model.phase == .countdown {
+            HStack {
+                Text(L("Going to sleep"))
+                Spacer()
+                Button(L("Cancel")) { model.cancelCountdown() }
+                    .controlSize(.small)
+                    .vigilButtonStyle()
+            }
+        } else if let session, session.state == .waiting, session.subagents.isEmpty {
+            WaitingLine { model.openApp(for: session) }
+        } else if let eta {
             if eta.fromHistory {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20)
+                Text(L("No task list") + " · " + Format.historyBasis(eta.historyCount ?? 0, eta.historyScope ?? .project).lowercasedFirst)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
-                StepSpinner(accent: accent).frame(width: 18, height: 18)
+                Text(taskLine(eta)).lineLimit(1).truncationMode(.tail)
+                    .help(eta.subject ?? "")
             }
-            VStack(alignment: .leading, spacing: 2) {
-                if eta.fromHistory {
-                    Text(L("No task list")).font(.system(size: 12)).foregroundStyle(.secondary)
-                    Text(Format.historyBasis(eta.historyCount ?? 0, eta.historyScope ?? .project))
-                        .font(.system(size: 14, weight: .semibold))
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    HStack(spacing: 6) {
-                        Text(stepLine).font(.system(size: 12)).lineLimit(1).minimumScaleFactor(0.85)
-                        if let growth = eta.growth {
-                            Text(Format.addedSteps(growth))
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(accent)
-                                .transition(.opacity.combined(with: .scale(scale: 0.8)))
-                        }
-                    }
-                    if let subject = eta.subject {
-                        Text(subject)
-                            .font(.system(size: 14, weight: .semibold))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                }
-            }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background(Theme.inset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .animation(.smooth, value: eta.growth)
     }
 
-    /// "Krok 4 ze 7 · hotovo asi v **21:15** (±5 min)": the time in primary, the rest in secondary.
-    private var stepLine: AttributedString {
-        var prefix = AttributedString(Format.stepOf(eta.step ?? 1, eta.total ?? 1) + " · " + L("done around") + " ")
-        prefix.foregroundColor = .secondary
-        var time = AttributedString(eta.finishAt.formatted(date: .omitted, time: .shortened))
-        time.foregroundColor = eta.confident ? .primary : .secondary
-        time.font = .system(size: 12, weight: .semibold)
-        var suffix = AttributedString(" (\(eta.plusMinus))")
-        suffix.foregroundColor = .secondary
-        return prefix + time + suffix
+    /// "Hotovo asi v 9:59 (±4 min) · Krok 4: stránky sign-in / sign-up".
+    private func taskLine(_ eta: SessionEta) -> String {
+        var line = L("Done around %@ (%@)", eta.finishAt.formatted(date: .omitted, time: .shortened), eta.plusMinus)
+        if let subject = eta.subject { line += " · " + L("Step %d: %@", eta.step ?? 1, subject) }
+        return line
     }
 }
 
-/// A small ring that spins while Claude works through its task list.
-struct StepSpinner: View {
-    let accent: Color
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            let angle = (t / 1.1).truncatingRemainder(dividingBy: 1) * 360
-            ZStack {
-                Circle().stroke(Theme.track, lineWidth: 2.5)
-                Circle().trim(from: 0, to: 0.3)
-                    .stroke(accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                    .rotationEffect(.degrees(angle))
-            }
-        }
-    }
-}
-
-/// bolt ─── track ─── moon: progress toward sleep. `nil` progress: indeterminate, a slow shimmer moves along.
-/// With a task list the track shows the list instead: one segment per task, ending in a flag.
-struct SleepTrack: View {
-    struct Steps: Equatable {
-        var done: Int
-        var total: Int
-        /// done + the current task's share, 0...1.
-        var progress: Double
-    }
-
-    let progress: Double?
-    let accent: Color
-    var steps: Steps? = nil
-    /// Ends in a flag (work finishes) instead of the moon (Mac sleeps).
-    var finish = false
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "bolt.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(accent)
-            GeometryReader { g in
-                let w = g.size.width
-                ZStack(alignment: .leading) {
-                    if let steps {
-                        segments(steps, width: w)
-                    } else {
-                        Capsule().fill(Theme.track).frame(height: 6)
-                    }
-                    if let steps {
-                        Circle().fill(.white).frame(width: 14, height: 14)
-                            .shadow(color: .black.opacity(0.4), radius: 2)
-                            .offset(x: min(w - 14, max(0, w * steps.progress - 7)))
-                    } else if let progress {
-                        Capsule().fill(accent).frame(width: max(6, w * progress), height: 6)
-                        Circle().fill(.white).frame(width: 14, height: 14)
-                            .shadow(color: .black.opacity(0.4), radius: 2)
-                            .offset(x: min(w - 14, max(0, w * progress - 7)))
-                    } else {
-                        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
-                            let t = context.date.timeIntervalSinceReferenceDate
-                            let phase = (t / 2.6).truncatingRemainder(dividingBy: 1) // one sweep every 2.6 s
-                            let seg = w * 0.32
-                            Capsule()
-                                .fill(LinearGradient(colors: [accent.opacity(0), accent, accent.opacity(0)],
-                                                     startPoint: .leading, endPoint: .trailing))
-                                .frame(width: seg, height: 6)
-                                .offset(x: -seg + (w + seg) * phase)
-                        }
-                        .frame(width: w, height: 6)
-                        .clipShape(Capsule())
-                    }
-                }
-                .frame(height: 14)
-                .animation(.linear(duration: 1), value: progress)
-                .animation(.spring(response: 0.6, dampingFraction: 0.85), value: steps)
-            }
-            .frame(height: 14)
-            Image(systemName: finish || steps != nil ? "flag" : "moon.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    /// One capsule per task with thin gaps; done tasks filled, the current one filled by its share.
-    private func segments(_ steps: Steps, width: CGFloat) -> some View {
-        let n = max(1, steps.total)
-        let gap: CGFloat = n > 20 ? 2 : 3
-        let segment = max(2, (width - gap * CGFloat(n - 1)) / CGFloat(n))
-        let partial = steps.progress * Double(n) - Double(steps.done)
-        return HStack(spacing: gap) {
-            ForEach(0..<n, id: \.self) { i in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.track)
-                    if i < steps.done {
-                        Capsule().fill(accent)
-                    } else if i == steps.done, partial > 0 {
-                        Capsule().fill(accent).frame(width: max(4, segment * min(1, partial)))
-                    }
-                }
-                .frame(width: segment, height: 6)
-            }
-        }
-    }
-}
-
-// MARK: - Waiting card
-
-struct WaitingCard: View {
-    let session: Session
+/// Orange symbol, "Čeká na vaši odpověď", Open: the one orange thing on screen.
+struct WaitingLine: View {
     let open: () -> Void
     var body: some View {
-        Card(padding: 14) {
-            HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Theme.waiting)
-                    .frame(width: 40, height: 40)
-                    .overlay(Image(systemName: "questionmark").font(.system(size: 18, weight: .bold)).foregroundStyle(.black))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(session.projectName).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                    Text(L("Waiting for your answer")).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.waiting)
-                }
-                Spacer(minLength: 6)
-                Button(L("Open"), action: open)
-                    .buttonStyle(PillButtonStyle(fill: Theme.waiting, foreground: .black))
-            }
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.bubble.fill").foregroundStyle(Theme.warning)
+                .accessibilityHidden(true)
+            Text(L("Waiting for your answer"))
+            Spacer(minLength: 4)
+            Button(L("Open"), action: open)
+                .controlSize(.small)
+                .vigilButtonStyle()
         }
     }
 }
 
-// MARK: - Status tiles
+// MARK: - Other sessions
 
-struct StatusTiles: View {
-    let environment: VigilCore.Environment
-    let accent: Color
+/// The other sessions, like the usage card's list: at most three rows, then "+N další". Clicking a working
+/// session shows it in the primary row. Sessions waiting for an answer get the orange row with Open.
+struct SessionList: View {
+    let model: AppModel
 
     var body: some View {
-        let env = environment
-        HStack(spacing: 8) {
-            Tile(symbol: env.lidClosed ? "laptopcomputer.slash" : "laptopcomputer", symbolColor: .primary,
-                 title: L("Lid"), value: env.lidClosed ? L("Closed (lid)") : L("Open (lid)"))
-            Tile(symbol: batterySymbol(env), symbolColor: env.isCharging ? Theme.accent(.green) : .primary,
-                 title: L("Battery"), value: env.batteryPercent.map { "\($0) %" } ?? "—", detail: batteryDetail(env))
-            Tile(symbol: env.thermal.rawValue >= ThermalLevel.serious.rawValue ? "thermometer.high" : "thermometer.medium",
-                 symbolColor: .primary, title: L("Temperature"), value: thermalText(env.thermal))
+        let primaryID = model.selectedSession?.id
+        let waiting = model.waitingSessions.filter { $0.id != primaryID }
+        let waitingIDs = Set(model.waitingSessions.map(\.id))
+        let others = model.sessionSummaries.filter { $0.id != primaryID && !waitingIDs.contains($0.id) }
+        if !waiting.isEmpty || !others.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(waiting.prefix(2)) { session in
+                    SessionRow(leading: .symbol("exclamationmark.bubble.fill", Theme.warning), title: session.projectName,
+                               subtitle: L("Waiting for your answer")) {
+                        Button(L("Open")) { model.openApp(for: session) }
+                            .controlSize(.small)
+                            .vigilButtonStyle()
+                    }
+                    .transition(.opacity)
+                }
+                ForEach(others.prefix(3)) { s in
+                    row(s)
+                }
+                if others.count > 3 {
+                    Text(L("+%d more", others.count - 3))
+                        .font(.caption).foregroundStyle(.secondary)
+                        .padding(.leading, 34)
+                }
+            }
         }
-        .animation(.smooth, value: env)
+    }
+
+    @ViewBuilder
+    private func row(_ s: UsageCardSession) -> some View {
+        let content = SessionRow(leading: .ring(s.contextPercent), title: s.project, subtitle: s.subtitle) {
+            if let eta = s.eta {
+                TrailingValue(text: eta, emphasized: s.etaConfident, accessibility: s.etaAccessibility)
+                    .help(L("Estimated remaining work time"))
+            } else if let elapsed = s.elapsed {
+                TrailingValue(text: Format.clock(elapsed), emphasized: false, accessibility: L("Running %@", Format.clock(elapsed)))
+            }
+        }
+        if s.working {
+            Button { model.selectedSessionID = s.id } label: { content }
+                .buttonStyle(.plain)
+                .accessibilityHint(L("Shows this session above"))
+        } else {
+            content
+        }
+    }
+}
+
+// MARK: - Status line
+
+/// Lid, battery, temperature in one row. Secondary unless something is wrong.
+struct StatusLine: View {
+    let model: AppModel
+
+    var body: some View {
+        let env = model.environment
+        HStack(spacing: 16) {
+            let lid = env.lidClosed ? L("Closed (lid)") : L("Open (lid)")
+            StatusInline(symbol: env.lidClosed ? "laptopcomputer.slash" : "laptopcomputer", text: lid,
+                         accessibility: L("Lid: %@", lid))
+            StatusInline(symbol: batterySymbol(env), text: env.batteryPercent.map { "\($0) %" } ?? "—",
+                         tint: batteryTint(env), accessibility: batteryAccessibility(env))
+            StatusInline(symbol: env.thermal.rawValue >= ThermalLevel.serious.rawValue ? "thermometer.high" : "thermometer.medium",
+                         text: thermalText(env.thermal), tint: thermalTint(env.thermal),
+                         accessibility: L("Temperature: %@", thermalText(env.thermal)))
+            Spacer(minLength: 0)
+        }
     }
 
     private func batterySymbol(_ env: VigilCore.Environment) -> String {
-        guard let pct = env.batteryPercent else { return "powerplug.fill" }
+        guard let pct = env.batteryPercent else { return "powerplug" }
         if env.isCharging { return "battery.100percent.bolt" }
         switch pct {
         case ..<13: return "battery.0percent"
@@ -575,10 +319,18 @@ struct StatusTiles: View {
         }
     }
 
-    private func batteryDetail(_ env: VigilCore.Environment) -> String? {
-        guard env.batteryPercent != nil else { return nil }
-        if env.isCharging { return L("Charging") }
-        return env.onBattery ? L("On battery") : L("Plugged in")
+    /// Orange when getting low on battery, red at or below the limit where Vigil stops.
+    private func batteryTint(_ env: VigilCore.Environment) -> Color? {
+        guard let pct = env.batteryPercent, env.onBattery, !env.isCharging else { return nil }
+        let limit = model.settings.config.lowBatteryThreshold
+        if limit > 0, pct <= limit { return Theme.critical }
+        return pct <= max(20, limit) ? Theme.warning : nil
+    }
+
+    private func batteryAccessibility(_ env: VigilCore.Environment) -> String {
+        guard let pct = env.batteryPercent else { return L("No battery") }
+        let detail = env.isCharging ? L("Charging") : env.onBattery ? L("On battery") : L("Plugged in")
+        return L("Battery %d percent, %@", pct, detail)
     }
 
     private func thermalText(_ level: ThermalLevel) -> String {
@@ -588,31 +340,55 @@ struct StatusTiles: View {
         case .serious, .critical: return L("High")
         }
     }
+
+    private func thermalTint(_ level: ThermalLevel) -> Color? {
+        switch level {
+        case .nominal: return nil
+        case .fair: return Theme.warning
+        case .serious, .critical: return Theme.critical
+        }
+    }
 }
 
-struct Tile: View {
-    let symbol: String
-    let symbolColor: Color
-    let title: String
-    let value: String
-    var detail: String?
+// MARK: - Usage row
+
+/// "Relace 5 % ▬░░ · Týden 12 % ▬░░ ›": opens the usage card.
+struct UsageRow: View {
+    let model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Image(systemName: symbol)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(symbolColor)
-                .contentTransition(.symbolEffect(.replace))
-                .frame(height: 20)
-            Spacer(minLength: 10)
-            Text(title).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-            Text(value).font(.system(size: 15, weight: .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
-                .contentTransition(.numericText())
-            Text(detail ?? " ").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+        let stale = model.usage.freshness(at: model.now).isStale
+        let five = model.usageWindow(.fiveHour)
+        let week = model.usageWindow(.sevenDay)
+        Button { model.showUsageCard() } label: {
+            HStack(spacing: 16) {
+                if let five { mini(L("Session"), five, stale: stale) }
+                if let week { mini(L("Week"), week, stale: stale) }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.tileRadius, style: .continuous))
+        .buttonStyle(.plain)
+        .help(L("Claude usage"))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L("Claude usage"))
+        .accessibilityValue([five.map { L("session %d percent", Int($0.usedPercentage.rounded())) },
+                             week.map { L("week %d percent", Int($0.usedPercentage.rounded())) }]
+            .compactMap { $0 }.joined(separator: ", "))
+        .accessibilityHint(L("Opens the usage card"))
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private func mini(_ label: String, _ window: EffectiveWindow, stale: Bool) -> some View {
+        let f = window.usedPercentage / 100
+        return HStack(spacing: 6) {
+            Text("\(label) \(Int(window.usedPercentage.rounded())) %")
+                .font(.footnote).fontDesign(.rounded).monospacedDigit().foregroundStyle(.secondary)
+                .lineLimit(1)
+            SegmentedProgressBar(progress: f, tint: SegmentedProgressBar.usageTint(f), dimmed: stale && !window.isReset)
+                .frame(width: 44)
+        }
     }
 }
 
@@ -625,6 +401,14 @@ enum PausedText {
         case .thermal: return L("Paused · Mac is too hot")
         case .maxDuration: return L("Paused · time limit reached")
         case .manualSleep: return L("Paused · you put the Mac to sleep")
+        }
+    }
+
+    /// Red for the critical states (battery, heat); the others are plain information.
+    static func tint(_ reason: GuardReason) -> Color {
+        switch reason {
+        case .lowBattery, .thermal: return Theme.critical
+        case .maxDuration, .manualSleep: return .secondary
         }
     }
 
@@ -642,24 +426,25 @@ enum PausedText {
     }
 }
 
-struct NoticeCard<Actions: View>: View {
+/// Symbol, title and explanation in one flat row, with optional actions below.
+struct NoticeRow<Actions: View>: View {
     let symbol: String
+    let tint: Color
     let title: String
     let detail: String
     @ViewBuilder var actions: Actions
     var body: some View {
-        Card(padding: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: symbol).font(.system(size: 18)).foregroundStyle(.white)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.system(size: 14, weight: .semibold))
-                    Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        .lineLimit(4)
-                    actions.padding(.top, 4)
-                }
-                Spacer(minLength: 0)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: symbol).symbolRenderingMode(.hierarchical).foregroundStyle(tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(detail).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                actions.controlSize(.small).padding(.top, 4)
             }
+            Spacer(minLength: 0)
         }
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -670,55 +455,45 @@ struct SetupChecklist: View {
 
     var body: some View {
         let s = model.setup
-        let accent = model.accent
-        Card(padding: 18) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text(L("Setup")).font(.system(size: 15, weight: .semibold))
-                    Spacer()
-                    Text("\(s.doneCount)/5").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).monospacedDigit()
-                        .contentTransition(.numericText())
-                }
-                GeometryReader { g in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Theme.track)
-                        Capsule().fill(accent).frame(width: g.size.width * CGFloat(s.doneCount) / 5)
-                    }
-                }
-                .frame(height: 6)
-                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: s.doneCount)
-
-                step(title: L("Sleep permission"),
-                     detail: L("One-time admin password so Vigil can keep the Mac awake with the lid closed."),
-                     done: s.sudoers, action: L("Allow"), busy: model.busy.contains("sudoers")) { model.installSudoers() }
-                if s.hooksOutdated {
-                    step(title: L("Claude Code hooks are out of date"),
-                         detail: L("Adds the newer hooks (subagents, waiting for your answer). Other hooks are left alone."),
-                         done: s.hooks, action: L("Update hooks"), busy: model.busy.contains("hooks")) { model.updateHooks() }
-                } else {
-                    step(title: L("Claude Code hooks"),
-                         detail: L("Adds hooks to ~/.claude/settings.json (backed up first)."),
-                         done: s.hooks, action: L("Add hooks"), busy: model.busy.contains("hooks")) { model.installHooks() }
-                }
-                step(title: L("Status line"),
-                     detail: L("Shows your Claude usage limits at the screen edge. Your current status line keeps working."),
-                     done: s.statusLine, action: L("Install"), busy: model.busy.contains("statusLine")) { model.installStatusLine() }
-                step(title: L("Notifications"),
-                     detail: L("Warns you before the Mac sleeps, with Cancel and Keep awake buttons."),
-                     done: s.notifications, action: L("Allow"), busy: false) { model.requestNotifications() }
-                step(title: L("Launch at login"),
-                     detail: L("Start Vigil automatically when you log in."),
-                     done: s.loginItem, action: L("Enable"), busy: false) { model.setLaunchAtLogin(true) }
-
-                if model.hooksJustInstalled {
-                    Label(L("Restart Claude Code sessions that are already running so they load the new hooks."),
-                          systemImage: "arrow.clockwise")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-
-                Button { model.runSelfTest() } label: { Label(L("Run self-test"), systemImage: "checklist") }
-                    .buttonStyle(PillButtonStyle())
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: L("Setup")) {
+                Text(Format.countOf(s.doneCount, 5)).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                    .numericTransition()
             }
+            SegmentedProgressBar(segments: 5, progress: Double(s.doneCount) / 5, accessibilityLabel: L("Setup"),
+                                 accessibilityValue: Format.countOf(s.doneCount, 5))
+
+            step(title: L("Sleep permission"),
+                 detail: L("One-time admin password so Vigil can keep the Mac awake with the lid closed."),
+                 done: s.sudoers, action: L("Allow"), busy: model.busy.contains("sudoers")) { model.installSudoers() }
+            if s.hooksOutdated {
+                step(title: L("Claude Code hooks are out of date"),
+                     detail: L("Adds the newer hooks (subagents, waiting for your answer). Other hooks are left alone."),
+                     done: s.hooks, action: L("Update hooks"), busy: model.busy.contains("hooks")) { model.updateHooks() }
+            } else {
+                step(title: L("Claude Code hooks"),
+                     detail: L("Adds hooks to ~/.claude/settings.json (backed up first)."),
+                     done: s.hooks, action: L("Add hooks"), busy: model.busy.contains("hooks")) { model.installHooks() }
+            }
+            step(title: L("Status line"),
+                 detail: L("Shows your Claude usage limits at the screen edge. Your current status line keeps working."),
+                 done: s.statusLine, action: L("Install"), busy: model.busy.contains("statusLine")) { model.installStatusLine() }
+            step(title: L("Notifications"),
+                 detail: L("Warns you before the Mac sleeps, with Cancel and Keep awake buttons."),
+                 done: s.notifications, action: L("Allow"), busy: false) { model.requestNotifications() }
+            step(title: L("Launch at login"),
+                 detail: L("Start Vigil automatically when you log in."),
+                 done: s.loginItem, action: L("Enable"), busy: false) { model.setLaunchAtLogin(true) }
+
+            if model.hooksJustInstalled {
+                Label(L("Restart Claude Code sessions that are already running so they load the new hooks."),
+                      systemImage: "arrow.clockwise")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Button { model.runSelfTest() } label: { Label(L("Run self-test"), systemImage: "checklist") }
+                .controlSize(.small)
+                .buttonStyle(.bordered)
         }
     }
 
@@ -726,47 +501,38 @@ struct SetupChecklist: View {
     private func step(title: String, detail: String, done: Bool, action: String, busy: Bool,
                       perform: @escaping () -> Void) -> some View {
         if !done {
-            HStack(alignment: .top, spacing: 10) {
-                StatusDot(ok: done, accent: model.accent)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "circle.dashed").foregroundStyle(.secondary).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 13, weight: .semibold))
-                    Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(title).font(.subheadline.weight(.semibold))
+                    Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer(minLength: 6)
-                ActionButton(title: action, busy: busy, prominent: true, accent: model.accent, action: perform)
+                Spacer(minLength: 8)
+                BusyButton(title: action, busy: busy, prominent: true, action: perform)
+                    .controlSize(.small)
             }
-            .transition(.move(edge: .leading).combined(with: .opacity))
+            .transition(.opacity)
         }
     }
 }
 
-// MARK: - Chrome
+// MARK: - Hints
 
+/// Only when it matters: lid closed on battery.
 struct BagHint: View {
     var body: some View {
-        HStack(alignment: .top, spacing: 6) {
-            Image(systemName: "flame.fill").font(.system(size: 10))
+        Label {
             Text(L("A closed laptop in a bag overheats. Keep it on a flat surface, ideally plugged in."))
                 .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "flame").symbolRenderingMode(.hierarchical)
         }
-        .font(.system(size: 10))
-        .foregroundStyle(.tertiary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 6)
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 }
 
-struct MessageBar: View {
-    let text: String
-    let dismiss: () -> Void
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "info.circle.fill").foregroundStyle(.secondary)
-            Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-            Spacer(minLength: 4)
-            Button(action: dismiss) { Image(systemName: "xmark") }.buttonStyle(.plain).foregroundStyle(.secondary)
-        }
-        .padding(14)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.tileRadius, style: .continuous))
-    }
+extension String {
+    /// "Podle 14 podobných…" -> "podle 14 podobných…" (to continue a sentence after " · ").
+    var lowercasedFirst: String { prefix(1).lowercased() + dropFirst() }
 }

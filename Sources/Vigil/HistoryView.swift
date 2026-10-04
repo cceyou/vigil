@@ -3,79 +3,88 @@ import VigilCore
 
 enum HistoryTab: Hashable { case sessions, accuracy }
 
+/// Native tables; the tab picker and Clear live in the window toolbar.
 struct HistoryView: View {
     @Bindable var model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Picker("", selection: $model.historyTab) {
-                Text(L("Sessions")).tag(HistoryTab.sessions)
-                Text(L("Estimate accuracy")).tag(HistoryTab.accuracy)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .frame(maxWidth: .infinity)
-
+        Group {
             switch model.historyTab {
             case .sessions:
-                SessionHistory(model: model)
-                if !model.sleepDecisions.isEmpty { SleepDecisionHistory(decisions: model.sleepDecisions, accent: model.accent) }
-            case .accuracy: AccuracyHistory(turns: model.turns, now: model.now, accent: model.accent)
+                if model.sleepDecisions.isEmpty {
+                    SessionHistory(model: model)
+                } else {
+                    VSplitView {
+                        SessionHistory(model: model).frame(minHeight: 160)
+                        SleepDecisionHistory(decisions: model.sleepDecisions).frame(minHeight: 120)
+                    }
+                }
+            case .accuracy:
+                AccuracyHistory(turns: model.turns, now: model.now)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker(L("View"), selection: $model.historyTab) {
+                    Text(L("Sessions")).tag(HistoryTab.sessions)
+                    Text(L("Estimate accuracy")).tag(HistoryTab.accuracy)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
+            ToolbarItem(placement: .primaryAction) {
+                if model.historyTab == .sessions {
+                    Button { model.clearHistory() } label: { Label(L("Clear"), systemImage: "trash") }
+                        .disabled(model.history.isEmpty)
+                        .help(L("Clear"))
+                }
             }
         }
     }
 }
 
+// MARK: - Sessions
+
 private struct SessionHistory: View {
     let model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                SectionTitle(text: L("Last %d sessions", 50))
-                Spacer()
-                if !model.history.isEmpty {
-                    Button(L("Clear")) { model.clearHistory() }.buttonStyle(PillButtonStyle())
-                }
-            }
-            Card(padding: 6) {
-                if model.history.isEmpty {
-                    HStack(spacing: 10) {
-                        Image(systemName: "clock.arrow.circlepath").foregroundStyle(.tertiary)
-                        Text(L("Finished sessions appear here.")).font(.system(size: 13)).foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(14)
-                } else {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(model.history.enumerated()), id: \.element.id) { index, record in
-                            HStack(spacing: 12) {
-                                Image(systemName: icon(record.reason))
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(record.reason == .ended ? model.accent : .secondary)
-                                    .frame(width: 20)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(record.project).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                                    Text(record.startedAt, format: .dateTime.day().month().hour().minute())
-                                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                                    if record.maxSubagents > 0 {
-                                        Label(L("Up to %@ · %@ total", Format.subagents(record.maxSubagents), Format.clock(record.subagentTime)),
-                                              systemImage: "arrow.triangle.branch")
-                                            .font(.system(size: 10)).foregroundStyle(.tertiary).monospacedDigit()
-                                    }
-                                }
-                                Spacer()
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    Text(Format.clock(record.duration)).font(.system(size: 13, weight: .semibold)).monospacedDigit()
-                                    Text(label(record.reason)).font(.system(size: 11)).foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.horizontal, 12).padding(.vertical, 10)
-                            if index < model.history.count - 1 { RowDivider().padding(.leading, 44) }
-                        }
+        if model.history.isEmpty {
+            ContentUnavailableView(L("No sessions yet"), systemImage: "clock.arrow.circlepath",
+                                   description: Text(L("Finished sessions appear here.")))
+        } else {
+            Table(model.history) {
+                TableColumn(L("Project")) { r in
+                    Label {
+                        Text(r.project).fontWeight(.medium).lineLimit(1)
+                    } icon: {
+                        Image(systemName: icon(r.reason)).symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(r.reason == .ended ? model.accent : .secondary)
                     }
                 }
+                .width(min: 110, ideal: 140)
+                TableColumn(L("Started")) { r in
+                    Text(r.startedAt, format: .dateTime.day().month().hour().minute()).foregroundStyle(.secondary).monospacedDigit()
+                }
+                .width(min: 90, ideal: 120)
+                TableColumn(L("Duration")) { r in
+                    Text(Format.clock(r.duration)).monospacedDigit()
+                }
+                .width(min: 60, ideal: 70)
+                TableColumn(L("Subagents")) { r in
+                    if r.maxSubagents > 0 {
+                        Text(L("Up to %@ · %@ total", Format.subagents(r.maxSubagents), Format.clock(r.subagentTime)))
+                            .foregroundStyle(.secondary).monospacedDigit()
+                    } else {
+                        Text("—").foregroundStyle(.tertiary)
+                    }
+                }
+                .width(min: 90, ideal: 150)
+                TableColumn(L("Result")) { r in
+                    Text(label(r.reason)).foregroundStyle(.secondary)
+                }
+                .width(min: 70, ideal: 90)
             }
         }
     }
@@ -98,93 +107,64 @@ private struct SessionHistory: View {
 
 // MARK: - Estimate accuracy
 
-/// How good the work-time estimate has been: three summary tiles and one row per finished turn.
+/// How good the work-time estimate has been: a summary row and one table row per finished turn.
 private struct AccuracyHistory: View {
     let turns: [TurnRecord]
     let now: Date
-    let accent: Color
-
-    static let hitGreen = Color(hex: 0x30D158)
 
     var body: some View {
         let summary = EtaAccuracy.summary(turns, now: now)
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                SummaryTile(title: L("Average error"),
-                            value: summary.meanError.map { "±" + Format.minutes($0) } ?? "—",
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 24) {
+                SummaryItem(title: L("Average error"), value: summary.meanError.map { "±" + Format.minutes($0) } ?? "—",
                             detail: Format.lastTurns(summary.scored))
-                SummaryTile(title: L("Hits in range"),
+                SummaryItem(title: L("Hits in range"),
                             value: summary.scored > 0 ? Format.countOf(summary.hits, summary.scored) : "—",
                             detail: L("actual inside the estimate"))
-                SummaryTile(title: L("Trend"), value: trendTitle(summary.trend), detail: trendDetail(summary.trend))
+                SummaryItem(title: L("Trend"), value: trendTitle(summary.trend), detail: trendDetail(summary.trend))
+                Spacer(minLength: 0)
             }
+            .padding(16)
+            Divider()
             if turns.isEmpty {
-                Card(padding: 14) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "gauge.with.dots.needle.33percent").foregroundStyle(.tertiary)
-                        Text(L("Estimates appear after the first finished turns.")).font(.system(size: 13)).foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                }
+                ContentUnavailableView(L("No estimates yet"), systemImage: "gauge.with.dots.needle.33percent",
+                                       description: Text(L("Estimates appear after the first finished turns.")))
             } else {
-                table
-            }
-        }
-    }
-
-    private var table: some View {
-        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 0) {
-            GridRow {
-                header(L("When"))
-                header(L("Project"))
-                header(L("Basis"))
-                header(L("Estimate")).gridColumnAlignment(.trailing)
-                header(L("Took")).gridColumnAlignment(.trailing)
-                header(L("Difference")).gridColumnAlignment(.trailing)
-            }
-            .padding(.bottom, 8)
-            ForEach(turns.prefix(50)) { turn in
-                Divider().gridCellUnsizedAxes(.horizontal).overlay(Theme.outline)
-                row(turn).padding(.vertical, 9)
-            }
-        }
-        .padding(.horizontal, 6)
-    }
-
-    private func header(_ text: String) -> some View {
-        Text(text.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(0.6).foregroundStyle(.tertiary)
-    }
-
-    @ViewBuilder
-    private func row(_ turn: TurnRecord) -> some View {
-        let checkpoint = EtaAccuracy.checkpoint(turn)
-        GridRow {
-            Text(when(turn.startedAt)).foregroundStyle(.secondary).monospacedDigit()
-            Text(turn.project).fontWeight(.medium).lineLimit(1).truncationMode(.tail)
-            Text(basis(checkpoint)).foregroundStyle(.secondary).lineLimit(1)
-            Group {
-                if let c = checkpoint {
-                    Text(EtaFormat.range(c.low, c.high))
-                } else {
-                    Text(L("no estimate")).foregroundStyle(.secondary)
+                Table(Array(turns.prefix(50))) {
+                    TableColumn(L("When")) { t in Text(when(t.startedAt)).foregroundStyle(.secondary).monospacedDigit() }
+                        .width(min: 50, ideal: 60)
+                    TableColumn(L("Project")) { t in Text(t.project).fontWeight(.medium).lineLimit(1) }
+                        .width(min: 90, ideal: 150)
+                    TableColumn(L("Basis")) { t in Text(basis(EtaAccuracy.checkpoint(t))).foregroundStyle(.secondary) }
+                        .width(min: 60, ideal: 70)
+                    TableColumn(L("Estimate")) { t in
+                        if let c = EtaAccuracy.checkpoint(t) {
+                            Text(EtaFormat.range(c.low, c.high)).monospacedDigit()
+                        } else {
+                            Text(L("no estimate")).foregroundStyle(.secondary)
+                        }
+                    }
+                    .width(min: 70, ideal: 100)
+                    TableColumn(L("Took")) { t in Text(Format.took(t.activeDuration)).monospacedDigit() }
+                        .width(min: 50, ideal: 60)
+                    TableColumn(L("Difference")) { t in difference(EtaAccuracy.verdict(t)) }
+                        .width(min: 60, ideal: 80)
                 }
             }
-            .monospacedDigit()
-            Text(Format.took(turn.activeDuration)).monospacedDigit()
-            difference(EtaAccuracy.verdict(turn))
         }
-        .font(.system(size: 13))
     }
 
     @ViewBuilder
     private func difference(_ verdict: EtaAccuracy.Verdict) -> some View {
         switch verdict {
         case .hit:
-            Label(L("hit"), systemImage: "checkmark").labelStyle(TightLabel()).foregroundStyle(Self.hitGreen)
+            Label(L("hit"), systemImage: "checkmark.circle.fill")
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(Theme.accent(.green))
         case .over(let d):
-            Text("+" + Format.minutes(d)).foregroundStyle(Theme.waiting).monospacedDigit()
+            Text("+" + Format.minutes(d)).monospacedDigit()
         case .under(let d):
-            Text("−" + Format.minutes(d)).foregroundStyle(Theme.waiting).monospacedDigit()
+            Text("−" + Format.minutes(d)).monospacedDigit()
         case .noEstimate:
             Text("—").foregroundStyle(.secondary)
         }
@@ -219,31 +199,19 @@ private struct AccuracyHistory: View {
     }
 }
 
-private struct SummaryTile: View {
+/// Label, rounded value, detail: the accuracy summary without boxes.
+private struct SummaryItem: View {
     let title: String
     let value: String
     let detail: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
-            Text(value).font(.system(size: 20, weight: .bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
-            Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.subheadline.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+            Text(value).font(.title3.weight(.semibold)).fontDesign(.rounded).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-}
-
-/// Icon and title close together ("✓ trefa").
-private struct TightLabel: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 4) {
-            configuration.icon.font(.system(size: 11, weight: .bold))
-            configuration.title
-        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -252,36 +220,25 @@ private struct TightLabel: LabelStyle {
 /// Every forced sleep and every time Vigil let macOS decide instead, with the reason.
 private struct SleepDecisionHistory: View {
     let decisions: [SleepDecisionRecord]
-    let accent: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionTitle(text: L("Sleep decisions"))
-            Card(padding: 6) {
-                LazyVStack(spacing: 0) {
-                    let shown = Array(decisions.prefix(30))
-                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, d in
-                        HStack(spacing: 12) {
-                            Image(systemName: d.slept ? "moon.fill" : "arrow.uturn.backward.circle")
-                                .font(.system(size: 15))
-                                .foregroundStyle(d.slept ? accent : .secondary)
-                                .frame(width: 20)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(d.slept ? L("Vigil put the Mac to sleep") : L("Left sleep to macOS"))
-                                    .font(.system(size: 13, weight: .semibold))
-                                Text(SleepGateText.reason(d.reason) + " · " + trigger(d.trigger))
-                                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            Spacer()
-                            Text(d.date, format: .dateTime.day().month().hour().minute())
-                                .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
-                        }
-                        .padding(.horizontal, 12).padding(.vertical, 9)
-                        if index < shown.count - 1 { RowDivider().padding(.leading, 44) }
-                    }
-                }
+        Table(Array(decisions.prefix(30))) {
+            TableColumn(L("Sleep decisions")) { d in
+                Label(d.slept ? L("Vigil put the Mac to sleep") : L("Left sleep to macOS"),
+                      systemImage: d.slept ? "moon.fill" : "arrow.uturn.backward.circle")
+                    .symbolRenderingMode(.hierarchical)
+                    .fontWeight(.medium)
             }
+            .width(min: 140, ideal: 200)
+            TableColumn(L("Reason")) { d in
+                Text(SleepGateText.reason(d.reason) + " · " + trigger(d.trigger)).foregroundStyle(.secondary)
+                    .help(SleepGateText.reason(d.reason) + " · " + trigger(d.trigger))
+            }
+            .width(min: 140, ideal: 260)
+            TableColumn(L("When")) { d in
+                Text(d.date, format: .dateTime.day().month().hour().minute()).foregroundStyle(.secondary).monospacedDigit()
+            }
+            .width(min: 90, ideal: 110)
         }
     }
 

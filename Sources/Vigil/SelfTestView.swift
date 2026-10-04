@@ -40,46 +40,48 @@ struct SelfTestView: View {
 
     var body: some View {
         let results = model.selfTestResults
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                SectionTitle(text: L("Checks"))
-                Spacer()
-                ActionButton(title: L("Run again"), busy: model.selfTestRunning, accent: model.accent) { model.runSelfTest() }
-            }
-            Card {
+        Form {
+            Section {
                 if model.selfTestRunning && results.isEmpty {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text(L("Running checks…")).font(.system(size: 13)).foregroundStyle(.secondary)
+                        Text(L("Running checks…")).foregroundStyle(.secondary)
                     }
                 } else {
-                    VStack(alignment: .leading, spacing: 16) {
-                        ForEach(results) { r in
-                            HStack(alignment: .top, spacing: 10) {
+                    ForEach(results) { r in
+                        LabeledContent {
+                            if let fix = r.fix {
+                                BusyButton(title: fixLabel(fix), busy: busy(fix), prominent: true) { model.fix(fix) }
+                            }
+                        } label: {
+                            Label {
+                                Text(title(r.id))
+                                Text(r.detail)
+                            } icon: {
                                 Image(systemName: r.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                    .font(.system(size: 18))
-                                    .foregroundStyle(r.passed ? model.accent : Color.white)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(title(r.id)).font(.system(size: 13, weight: .semibold))
-                                    Text(r.detail).font(.system(size: 11)).foregroundStyle(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                                Spacer(minLength: 6)
-                                if let fix = r.fix {
-                                    ActionButton(title: fixLabel(fix), busy: busy(fix), prominent: true, accent: model.accent) { model.fix(fix) }
-                                }
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(r.passed ? model.accent : Theme.critical)
                             }
                         }
-                        if !results.isEmpty {
-                            RowDivider()
-                            let passed = results.filter(\.passed).count
-                            Label(passed == results.count ? L("All checks passed") : L("%d of %d checks passed", passed, results.count),
-                                  systemImage: passed == results.count ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(passed == results.count ? model.accent : Color.white)
-                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityValue(r.passed ? L("Passed") : L("Failed"))
                     }
                 }
+            } header: {
+                Text(L("Checks"))
+            } footer: {
+                if !results.isEmpty {
+                    let passed = results.filter(\.passed).count
+                    Text(passed == results.count ? L("All checks passed") : L("%d of %d checks passed", passed, results.count))
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { model.runSelfTest() } label: { Label(L("Run again"), systemImage: "arrow.clockwise") }
+                    .disabled(model.selfTestRunning)
+                    .help(L("Run again"))
             }
         }
     }
