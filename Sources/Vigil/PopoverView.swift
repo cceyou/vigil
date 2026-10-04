@@ -76,12 +76,14 @@ struct PopoverView: View {
 
 // MARK: - Header menu
 
-/// ⋯ in the header: Watch Claude Code, History, Settings, Quit.
+/// ⋯ in the header: Watch Claude Code, Sound when done, History, Settings, Quit.
 struct MoreMenu: View {
     let model: AppModel
     var body: some View {
         Menu {
             Toggle(L("Watch Claude Code"), isOn: Binding(get: { model.enabled }, set: { model.setEnabled($0) }))
+            Toggle(L("Sound when done"), isOn: Binding(get: { model.settings.sound.doneEnabled },
+                                                       set: { v in model.update { $0.sound.doneEnabled = v } }))
             Divider()
             Button(L("History…")) { model.open(.history) }
             Button(L("Settings…")) { model.open(.settings) }

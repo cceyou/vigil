@@ -359,6 +359,17 @@
         }
       }
     },
+    "Always": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vždy"
+          }
+        }
+      }
+    },
     "An estimate, not a promise. It never affects sleep.": {
       "extractionState": "manual",
       "localizations": {
@@ -509,6 +520,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Slabá baterie"
+          }
+        }
+      }
+    },
+    "Beep when Claude is waiting for an answer": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pípnout, když Claude čeká na odpověď"
+          }
+        }
+      }
+    },
+    "Beep when done": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pípnout po dokončení"
           }
         }
       }
@@ -911,6 +944,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hotovo asi v %@ (%@)"
+          }
+        }
+      }
+    },
+    "Done sound": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zvuk dokončení"
           }
         }
       }
@@ -2202,6 +2246,17 @@
         }
       }
     },
+    "Only for tasks longer than": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jen u úkolů delších než"
+          }
+        }
+      }
+    },
     "Open": {
       "extractionState": "manual",
       "localizations": {
@@ -2362,6 +2417,39 @@
         }
       }
     },
+    "Play": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přehrát"
+          }
+        }
+      }
+    },
+    "Play test sound": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přehrát zkušební zvuk"
+          }
+        }
+      }
+    },
+    "Plays the done sound at the volume set in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přehraje zvuk dokončení v hlasitosti z Nastavení."
+          }
+        }
+      }
+    },
     "Plugged in": {
       "extractionState": "manual",
       "localizations": {
@@ -2446,6 +2534,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Uspat Mac hned"
+          }
+        }
+      }
+    },
+    "Quick answers while you watch stay silent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rychlé odpovědi, u kterých sedíte, zůstanou potichu."
           }
         }
       }
@@ -2923,6 +3022,28 @@
         }
       }
     },
+    "Sound": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zvuk"
+          }
+        }
+      }
+    },
+    "Sound when done": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zvuk po dokončení"
+          }
+        }
+      }
+    },
     "Start Vigil automatically when you log in.": {
       "extractionState": "manual",
       "localizations": {
@@ -3073,6 +3194,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Subagenti pracují · %@"
+          }
+        }
+      }
+    },
+    "System sounds at the macOS alert volume. Sessions finishing within 3 s play one sound.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systémové zvuky v hlasitosti upozornění macOS. Více relací dokončených do 3 s pípne jen jednou."
           }
         }
       }
@@ -3528,6 +3660,17 @@
         }
       }
     },
+    "Volume": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hlasitost"
+          }
+        }
+      }
+    },
     "Wait this long after Claude finishes before sleeping.": {
       "extractionState": "manual",
       "localizations": {
@@ -3579,6 +3722,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Čeká na vaši odpověď"
+          }
+        }
+      }
+    },
+    "Waiting sound": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zvuk čekání"
           }
         }
       }

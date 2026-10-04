@@ -15,6 +15,30 @@ struct SettingsView: View {
                 set: { v in model.update { $0.ui[keyPath: keyPath] = v } })
     }
 
+    private func sound<T>(_ keyPath: WritableKeyPath<SoundSettings, T>) -> Binding<T> {
+        Binding(get: { model.settings.sound[keyPath: keyPath] },
+                set: { v in model.update { $0.sound[keyPath: keyPath] = v } })
+    }
+
+    /// A system sound menu with a ▶ button that plays the chosen one.
+    private func soundPicker(_ keyPath: WritableKeyPath<SoundSettings, String>, label: String) -> some View {
+        LabeledContent {
+            HStack(spacing: 6) {
+                Picker(label, selection: sound(keyPath)) {
+                    ForEach(SystemSounds.names(), id: \.self) { Text(verbatim: $0).tag($0) }
+                }
+                .labelsHidden()
+                .fixedSize()
+                Button { model.previewSound(model.settings.sound[keyPath: keyPath]) } label: { Image(systemName: "play.fill") }
+                    .buttonStyle(.borderless)
+                    .help(L("Play"))
+                    .accessibilityLabel(L("Play"))
+            }
+        } label: {
+            Text(label)
+        }
+    }
+
     var body: some View {
         let setup = model.setup
         Form {
@@ -84,6 +108,38 @@ struct SettingsView: View {
                 .disabled(model.settings.config.notificationPolicy != .keepAwake)
             } header: {
                 Text(L("Waiting for you"))
+            }
+
+            Section {
+                Toggle(L("Beep when done"), isOn: sound(\.doneEnabled))
+                soundPicker(\.doneSound, label: L("Done sound"))
+                    .disabled(!model.settings.sound.doneEnabled)
+                Picker(selection: sound(\.minTurnDuration)) {
+                    Text(L("Always")).tag(0.0)
+                    ForEach([30.0, 120, 300], id: \.self) { Text(Durations.short($0)).tag($0) }
+                } label: {
+                    Text(L("Only for tasks longer than"))
+                    Text(L("Quick answers while you watch stay silent."))
+                }
+                .disabled(!model.settings.sound.doneEnabled)
+                Toggle(L("Beep when Claude is waiting for an answer"), isOn: sound(\.waitingEnabled))
+                soundPicker(\.waitingSound, label: L("Waiting sound"))
+                    .disabled(!model.settings.sound.waitingEnabled)
+                LabeledContent {
+                    Slider(value: sound(\.volume), in: 0...1) { editing in
+                        if !editing { model.previewSound() }
+                    }
+                    .frame(width: 160)
+                    .accessibilityValue("\(Int((model.settings.sound.volume * 100).rounded())) %")
+                } label: {
+                    Text(L("Volume"))
+                    Text("\(Int((model.settings.sound.volume * 100).rounded())) %").monospacedDigit()
+                }
+            } header: {
+                Text(L("Sound"))
+            } footer: {
+                Text(L("System sounds at the macOS alert volume. Sessions finishing within 3 s play one sound."))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Section {

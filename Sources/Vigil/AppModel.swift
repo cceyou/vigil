@@ -93,6 +93,8 @@ final class AppModel {
     @ObservationIgnored private let probe = SelfTestProbe()
     @ObservationIgnored private let monitor = BatteryThermalMonitor()
     @ObservationIgnored private var server: HookServer?
+    /// Finished / waiting sounds; watches the sessions around every state machine event.
+    @ObservationIgnored private let chime: ChimeMachine
     @ObservationIgnored private var executor: EffectExecutor!
     @ObservationIgnored private var jobs: AsyncStream<Job>.Continuation!
     @ObservationIgnored private var timerTask: Task<Void, Never>?
@@ -122,6 +124,7 @@ final class AppModel {
         self.decisionStore = SleepDecisionStore(url: paths.sleepDecisions)
         self.sleepDecisions = decisionStore.load()
         self.realPower = SystemPowerController(paths: paths)
+        self.chime = ChimeMachine(settings: loaded.sound, player: SystemSoundPlayer())
     }
 
     // MARK: lifecycle
@@ -257,7 +260,11 @@ final class AppModel {
     // MARK: event plumbing
 
     func send(_ event: Event) {
-        let effects = machine.handle(event, at: Date())
+        let date = Date()
+        let before = machine.sessions
+        let effects = machine.handle(event, at: date)
+        // The sound plays right away, before the effects (and any sleep countdown) run.
+        for cue in chime.observe(event, before: before, after: machine.sessions, at: date) { log.info("sound: \(cue.rawValue)") }
         if !effects.isEmpty { jobs?.yield(.effects(effects)) }
         now = Date()
         onChange?()
@@ -598,6 +605,7 @@ final class AppModel {
             log.info("dry run \(settings.dryRun ? "on" : "off")")
         }
         if settings.ui != old.ui { onUISettingsChange?() }
+        if settings.sound != old.sound { chime.settings = settings.sound }
         onChange?()
     }
 
@@ -614,6 +622,9 @@ final class AppModel {
     }
 
     func dismissMessage() { message = nil }
+
+    /// ▶ next to a sound picker, and the self-test's test sound.
+    func previewSound(_ sound: String? = nil) { chime.preview(sound ?? settings.sound.doneSound) }
 
     func openLog() {
         try? FileManager.default.createDirectory(at: paths.logDir, withIntermediateDirectories: true)

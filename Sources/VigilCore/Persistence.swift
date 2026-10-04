@@ -73,6 +73,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var dryRun = false
     public var hasSeenOnboarding = false
     public var ui = UISettings()
+    public var sound = SoundSettings()
     /// Settings migrations applied so far (nil = saved before migrations existed).
     public var revision: Int?
     public static let currentRevision = 3
@@ -87,6 +88,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         dryRun = try c.decodeIfPresent(Bool.self, forKey: .dryRun) ?? d.dryRun
         hasSeenOnboarding = try c.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? d.hasSeenOnboarding
         ui = try c.decodeIfPresent(UISettings.self, forKey: .ui) ?? d.ui
+        sound = try c.decodeIfPresent(SoundSettings.self, forKey: .sound) ?? d.sound
         revision = try c.decodeIfPresent(Int.self, forKey: .revision)
     }
 

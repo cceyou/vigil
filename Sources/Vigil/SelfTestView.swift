@@ -75,6 +75,15 @@ struct SelfTestView: View {
                     Text(passed == results.count ? L("All checks passed") : L("%d of %d checks passed", passed, results.count))
                 }
             }
+
+            Section {
+                LabeledContent {
+                    Button(L("Play test sound")) { model.previewSound() }
+                } label: {
+                    Text(L("Sound"))
+                    Text(L("Plays the done sound at the volume set in Settings."))
+                }
+            }
         }
         .formStyle(.grouped)
         .toolbar {
