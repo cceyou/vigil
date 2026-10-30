@@ -42,6 +42,9 @@ public struct NotchMachine: Equatable, Sendable {
         case escape(cardIsKey: Bool)
         /// Called about twice a second with what is really on screen.
         case watchdog(cardOnScreen: Bool, notchOnScreen: Bool, now: Date)
+        /// The controller threw every panel away (wake, screen change, repair, "Obnovit notch"): start over from
+        /// hidden; the next visibility check shows the new notch.
+        case rebuilt
     }
 
     public enum Effect: Equatable, Sendable {
@@ -176,6 +179,16 @@ public struct NotchMachine: Equatable, Sendable {
         case .escape(let cardIsKey):
             if cardShown && cardIsKey { close(&fx) }
 
+        case .rebuilt:
+            token += 1
+            pointerInNotch = false
+            pointerInCard = false
+            pendingHide = false
+            mismatchSince = nil
+            fx.append(.cancelTimers)
+            if phase == .pinned { fx.append(.watchOutsideClicks(false)) }
+            notchShown = false
+            phase = .hidden
         case .watchdog(let cardOnScreen, let notchOnScreen, let now):
             let consistent = cardOnScreen == cardShown && notchOnScreen == notchShown
             if consistent {
@@ -292,6 +305,63 @@ public struct NotchMachine: Equatable, Sendable {
         case .mouseDownOutside: return "click outside"
         case .escape: return "Esc"
         case .watchdog: return "watchdog"
+        case .rebuilt: return "panels rebuilt"
         }
+    }
+}
+
+/// The 30-second health check of the notch and card panels: what the state machine believes against what the
+/// window server shows. Pure; the controller gathers the snapshot and rebuilds every panel when anything is wrong.
+public enum NotchHealth {
+    public struct Panel: Equatable, Sendable {
+        /// `kCGWindowIsOnscreen`, not `NSWindow.isVisible`.
+        public var onScreen: Bool
+        public var trackingInstalled: Bool
+
+        public init(onScreen: Bool, trackingInstalled: Bool) {
+            self.onScreen = onScreen
+            self.trackingInstalled = trackingInstalled
+        }
+    }
+
+    public struct Snapshot: Equatable, Sendable {
+        public var notchShown: Bool
+        public var cardShown: Bool
+        /// The card is sliding out (its orderOut is pending): neither state is wrong yet.
+        public var cardClosing: Bool
+        public var notches: [UInt32: Panel]
+        public var card: Panel?
+        public var wantedDisplays: Set<UInt32>
+
+        public init(notchShown: Bool, cardShown: Bool, cardClosing: Bool = false, notches: [UInt32: Panel], card: Panel?,
+                    wantedDisplays: Set<UInt32>) {
+            self.notchShown = notchShown
+            self.cardShown = cardShown
+            self.cardClosing = cardClosing
+            self.notches = notches
+            self.card = card
+            self.wantedDisplays = wantedDisplays
+        }
+    }
+
+    /// What is wrong, one log phrase each; empty when everything matches.
+    public static func problems(_ s: Snapshot) -> [String] {
+        var out: [String] = []
+        if s.notchShown {
+            for (id, p) in s.notches.sorted(by: { $0.key < $1.key }) {
+                if !p.onScreen { out.append("notch on display \(id) not on screen") }
+                if !p.trackingInstalled { out.append("notch on display \(id) lost its tracking area") }
+            }
+        }
+        if !s.cardClosing {
+            let cardOnScreen = s.card?.onScreen ?? false
+            if s.cardShown, !cardOnScreen { out.append("card open but not on screen") }
+            if !s.cardShown, cardOnScreen { out.append("card on screen but closed") }
+            if s.cardShown, cardOnScreen, s.card?.trackingInstalled == false { out.append("card lost its tracking area") }
+        }
+        if Set(s.notches.keys) != s.wantedDisplays {
+            out.append("notches for displays \(s.notches.keys.sorted()) but displays \(s.wantedDisplays.sorted())")
+        }
+        return out
     }
 }

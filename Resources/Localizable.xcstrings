@@ -1504,6 +1504,72 @@
         }
       }
     },
+    "Hover test skipped: the notch is not shown": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test najetí přeskočen: notch není zobrazený"
+          }
+        }
+      }
+    },
+    "Hover test: hovering the notch did not open the card": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test najetí: najetí na notch kartu neotevřelo"
+          }
+        }
+      }
+    },
+    "Hover test: hovering the notch opened the card, and it is on screen": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test najetí: najetí na notch otevřelo kartu a je na obrazovce"
+          }
+        }
+      }
+    },
+    "Hover test: the card is open and on screen": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test najetí: karta je otevřená a na obrazovce"
+          }
+        }
+      }
+    },
+    "Hover test: the card is open but not on screen": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test najetí: karta je otevřená, ale není na obrazovce"
+          }
+        }
+      }
+    },
+    "Hover test: the card opened but is not on screen": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test najetí: karta se otevřela, ale není na obrazovce"
+          }
+        }
+      }
+    },
     "How long the pointer rests on the notch before the card opens.": {
       "extractionState": "manual",
       "localizations": {
@@ -2782,6 +2848,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Restartovat naslouchání"
+          }
+        }
+      }
+    },
+    "Restore the notch": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obnovit notch"
           }
         }
       }

@@ -111,6 +111,10 @@ final class AppModel {
     @ObservationIgnored var onShowUsageCard: (() -> Void)?
     /// The edge notch's self-test line (set by the app delegate, which owns the notch controller).
     @ObservationIgnored var notchStatus: (() -> (detail: String, healthy: Bool))?
+    /// The self-test's hover check: opens the card through the hover path and reports whether it is on screen.
+    @ObservationIgnored var notchHoverTest: ((@escaping @MainActor (Bool, String) -> Void) -> Void)?
+    /// "Obnovit notch" in the … menu.
+    @ObservationIgnored var onRepairNotch: (() -> Void)?
     /// Settings that the notch / hotkey controllers care about changed.
     @ObservationIgnored var onUISettingsChange: (() -> Void)?
     @ObservationIgnored private let log = Log.shared
@@ -817,14 +821,26 @@ final class AppModel {
 
     // MARK: self-test
 
+    func repairNotch() {
+        log.info("Obnovit notch chosen")
+        onRepairNotch?()
+    }
+
     func runSelfTest(showing: Bool = true) {
         guard !selfTestRunning else { return }
         selfTestRunning = true
         if showing { open(.selfTest) }
+        guard let hover = notchHoverTest else { runChecks(hover: nil); return }
+        hover { [weak self] ok, line in self?.runChecks(hover: (ok, line)) }
+    }
+
+    private func runChecks(hover: (Bool, String)?) {
+        var notch = notchStatus?()
+        if let hover, let n = notch { notch = (n.detail + "\n" + hover.1, n.healthy && hover.0) }
         let test = SelfTest(paths: paths, probe: probe,
                             isNotificationAuthorized: { [notifier] in await notifier.isAuthorized() },
                             awakeHeld: machine.awakeHeld, lidOpenIdleSleep: settings.config.lidOpenIdleSleep,
-                            notchReport: notchStatus?())
+                            notchReport: notch)
         Task {
             // hook.sh must exist for the round trip; installing the script alone does not touch settings.json.
             if !FileManager.default.isExecutableFile(atPath: paths.hookScript.path) { try? HookInstaller(paths: paths).installScript() }

@@ -89,6 +89,7 @@ struct MoreMenu: View {
             Button(L("History…")) { model.open(.history) }
             Button(L("Settings…")) { model.open(.settings) }
                 .keyboardShortcut(",")
+            Button(L("Restore the notch")) { model.repairNotch() }
             Divider()
             Button(L("Quit")) { model.quit() }
                 .keyboardShortcut("q")

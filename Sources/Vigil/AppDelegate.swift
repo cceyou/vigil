@@ -35,6 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let notch = self?.notch else { return (L("Notch is off"), true) }
             return (notch.statusReport(), notch.notchHealthy)
         }
+        model.notchHoverTest = { [weak self] done in
+            guard let notch = self?.notch else { done(true, L("Hover test skipped: the notch is not shown")); return }
+            notch.selfTestHover(done)
+        }
+        model.onRepairNotch = { [weak self] in self?.notch.repairFromMenu() }
         model.start()
         statusController.refresh()
 
