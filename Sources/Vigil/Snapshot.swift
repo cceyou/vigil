@@ -33,6 +33,9 @@ enum Snapshot {
             State(name: "countdown") { $0.previewScenario(.countdown); $0.previewUsage(.data) },
             State(name: "idle") { $0.previewScenario(.idle); $0.previewUsage(.data) },
             State(name: "multi") { $0.previewScenario(.multi); $0.previewUsage(.data) },
+            State(name: "shell") { $0.previewScenario(.shell); $0.previewUsage(.data) },
+            State(name: "keep-awake") { $0.previewScenario(.keepAwake); $0.previewUsage(.data) },
+            State(name: "keep-awake-forever") { $0.previewScenario(.keepAwakeForever); $0.previewUsage(.data) },
         ]
 
         func render(_ view: AnyView, _ variant: Variant, size: NSSize? = nil, padded: Bool = true, to name: String) async {
@@ -88,7 +91,7 @@ enum Snapshot {
     }
 }
 
-enum PreviewScenario { case working, multi, waiting, countdown, keepAwake, idle, idleSetup, etaTasks, etaHistory }
+enum PreviewScenario { case working, multi, waiting, countdown, keepAwake, keepAwakeForever, shell, idle, idleSetup, etaTasks, etaHistory }
 enum PreviewUsage { case data, critical, stale, empty, noLimits }
 
 extension AppModel {
@@ -126,7 +129,7 @@ extension AppModel {
                 _ = m.handle(hook(.userPromptSubmit, "a", "alwayson"), at: now.addingTimeInterval(-4008))
                 _ = m.handle(hook(.subagentStart, "a", "alwayson", agent: "x1", type: "Explore"), at: now.addingTimeInterval(-300))
                 _ = m.handle(hook(.subagentStart, "a", "alwayson", agent: "x2", type: "code-reviewer"), at: now.addingTimeInterval(-200))
-                _ = m.handle(.keepAwake, at: now.addingTimeInterval(-5))
+                _ = m.handle(.keepAwake(.minutes(60)), at: now.addingTimeInterval(-5))
             case .multi:
                 // a works (with usage data), b works in the home folder with a subagent, c finished and has no
                 // status line data yet.
@@ -144,17 +147,25 @@ extension AppModel {
                 _ = m.handle(hook(.userPromptSubmit, "a", "alwayson"), at: now.addingTimeInterval(-900))
                 _ = m.handle(hook(.stop, "a", "alwayson"), at: now.addingTimeInterval(-6))
             case .keepAwake:
-                _ = m.handle(.keepAwake, at: now.addingTimeInterval(-3005))
+                _ = m.handle(.keepAwake(.minutes(120)), at: now.addingTimeInterval(-60))
+            case .keepAwakeForever:
+                _ = m.handle(.keepAwake(.untilCancelled), at: now.addingTimeInterval(-60))
+            case .shell:
+                // Claude finished; its test run keeps going in the background.
+                _ = m.handle(hook(.userPromptSubmit, "a", "alwayson"), at: now.addingTimeInterval(-600))
+                _ = m.handle(.hook(HookEvent(kind: .stop, sessionID: "a", cwd: "/Users/me/Projects/alwayson", pid: 1,
+                                             backgroundTasks: [ReportedTask(id: "b1", kind: .shell, command: "npm test")])),
+                             at: now.addingTimeInterval(-200))
             case .idle:
                 break
             case .idleSetup:
                 setup = SetupStatus(sudoers: true, hooks: true, notifications: false, loginItem: true, socket: true, statusLine: false)
             case .etaTasks:
                 for e in Self.etaEvents(now: now) { _ = m.handle(.hook(e.0), at: e.1) }
-                _ = m.handle(.keepAwake, at: now.addingTimeInterval(-1044))
+                _ = m.handle(.keepAwake(.minutes(60)), at: now.addingTimeInterval(-1044))
             case .etaHistory:
                 for e in Self.etaEvents(now: now) where e.0.sessionID == "b" { _ = m.handle(.hook(e.0), at: e.1) }
-                _ = m.handle(.keepAwake, at: now.addingTimeInterval(-1044))
+                _ = m.handle(.keepAwake(.minutes(60)), at: now.addingTimeInterval(-1044))
             }
         }
         previewInject(history: history, setup: setup, selfTest: selfTestResults)

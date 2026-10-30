@@ -87,7 +87,7 @@ import Testing
         var m = machine()
         _ = m.handle(hook(.userPromptSubmit), at: at(0))
         _ = m.handle(hook(.stop), at: at(10))
-        #expect(m.handle(.keepAwake, at: at(15)) == [.dismissCountdown])
+        #expect(m.handle(.keepAwake(.minutes(60)), at: at(15)) == [.dismissCountdown])
         #expect(m.phase == .working)
         #expect(m.handle(.tick, at: at(3000)).isEmpty)
         // After the hour it becomes idle again: countdown, then sleep.
@@ -97,7 +97,7 @@ import Testing
 
     @Test func keepAwakeFromArmedAcquires() {
         var m = machine()
-        #expect(m.handle(.keepAwake, at: at(0)) == [.acquireAwake])
+        #expect(m.handle(.keepAwake(.minutes(60)), at: at(0)) == [.acquireAwake])
         #expect(m.phase == .working)
     }
 

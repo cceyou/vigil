@@ -48,6 +48,8 @@ public struct UISettings: Codable, Equatable, Sendable {
     public var islandContent = IslandContent.elapsed
     /// "Almost done" notification from the work-time estimate. Off by default.
     public var etaNotification = false
+    /// "Nechat vzhůru": what a click on the button repeats (the last duration chosen from its menu).
+    public var lastKeepAwake = KeepAwakeDuration.minutes(60)
 
     public init() {}
 
@@ -64,6 +66,7 @@ public struct UISettings: Codable, Equatable, Sendable {
         usageNotifications = try c.decodeIfPresent(Bool.self, forKey: .usageNotifications) ?? d.usageNotifications
         islandContent = (try? c.decodeIfPresent(IslandContent.self, forKey: .islandContent)) ?? d.islandContent
         etaNotification = try c.decodeIfPresent(Bool.self, forKey: .etaNotification) ?? d.etaNotification
+        lastKeepAwake = (try? c.decodeIfPresent(KeepAwakeDuration.self, forKey: .lastKeepAwake)) ?? d.lastKeepAwake
     }
 }
 

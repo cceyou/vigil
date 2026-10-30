@@ -336,7 +336,10 @@ public enum Event: Equatable, Sendable {
     case sessionsDied([String])
     case setEnabled(Bool)
     case cancelCountdown
-    case keepAwake
+    /// "Nechat vzhůru": an explicit keep-awake for a while or until cancelled.
+    case keepAwake(KeepAwakeDuration)
+    /// "Zrušit" next to a running keep-awake.
+    case cancelKeepAwake
     case sleepNow
     case environment(Environment)
     case configChanged(Config)
@@ -347,6 +350,21 @@ public enum Event: Equatable, Sendable {
     case processes([ProcessObservation])
     /// "Ignorovat" next to a running background shell.
     case ignoreShell(sessionID: String, shellID: String)
+}
+
+/// How long "Nechat vzhůru" holds the Mac awake.
+public enum KeepAwakeDuration: Codable, Equatable, Hashable, Sendable {
+    case minutes(Int)
+    /// "Do odvolání".
+    case untilCancelled
+
+    /// The menu: 30 min, 1, 2, 4 and 8 h, until cancelled ("Vlastní…" adds any hours and minutes).
+    public static let presets: [KeepAwakeDuration] = [.minutes(30), .minutes(60), .minutes(120), .minutes(240), .minutes(480), .untilCancelled]
+
+    public var seconds: TimeInterval? {
+        if case .minutes(let m) = self { return TimeInterval(max(1, m) * 60) }
+        return nil
+    }
 }
 
 /// One session's processes, as the process sampler saw them.
@@ -407,6 +425,10 @@ public struct StateMachine: Equatable {
     public private(set) var sessions: [Session] = []
     public private(set) var countdownDeadline: Date?
     public private(set) var keepAwakeUntil: Date?
+    /// "Do odvolání": held until cancelled (or a battery / heat guard trips).
+    public private(set) var keepAwakeIndefinite = false
+    /// When the running keep-awake was asked for (its progress bar).
+    public private(set) var keepAwakeStartedAt: Date?
     /// True while `disablesleep 1` is (supposed to be) in force.
     public private(set) var awakeHeld = false
     public private(set) var awakeSince: Date?
@@ -493,9 +515,17 @@ public struct StateMachine: Equatable {
 
     private var anyBlockingSession: Bool { sessions.contains(where: isBlocking) }
 
-    private func keepAwakeActive(_ now: Date) -> Bool {
+    /// An explicit "Nechat vzhůru" is running.
+    public func keepAwakeActive(_ now: Date) -> Bool {
+        if keepAwakeIndefinite { return true }
         if let until = keepAwakeUntil { return now < until }
         return false
+    }
+
+    private mutating func clearKeepAwake() {
+        keepAwakeUntil = nil
+        keepAwakeIndefinite = false
+        keepAwakeStartedAt = nil
     }
 
     // MARK: handle
@@ -520,7 +550,7 @@ public struct StateMachine: Equatable {
 
         case .setEnabled(let value):
             enabled = value
-            if !value { keepAwakeUntil = nil; latch = nil }
+            if !value { clearKeepAwake(); latch = nil }
 
         case .cancelCountdown:
             if phase == .countdown {
@@ -531,13 +561,20 @@ public struct StateMachine: Equatable {
                 // so latch until everything is idle.
                 if anyBlockingSession { latch = .manualSleep }
                 // Force the release path even though "blocking" might be false.
-                keepAwakeUntil = nil
+                clearKeepAwake()
                 forceArmed(now: now, fx: &fx)
             }
 
-        case .keepAwake:
+        case .keepAwake(let duration):
             guard enabled else { break }
-            keepAwakeUntil = now.addingTimeInterval(config.manualKeepAwake)
+            keepAwakeStartedAt = now
+            if let seconds = duration.seconds {
+                keepAwakeUntil = now.addingTimeInterval(seconds)
+                keepAwakeIndefinite = false
+            } else {
+                keepAwakeUntil = nil
+                keepAwakeIndefinite = true
+            }
             latch = nil
             if countdownDeadline != nil {
                 countdownDeadline = nil
@@ -545,9 +582,13 @@ public struct StateMachine: Equatable {
                 fx.append(.dismissCountdown)
             }
 
+        case .cancelKeepAwake:
+            // Back to what the sessions say: the grace period starts if nothing else is busy.
+            clearKeepAwake()
+
         case .sleepNow:
             // "Uspat hned" is the one sleep that never asks the gate: the user is right there asking for it.
-            keepAwakeUntil = nil
+            clearKeepAwake()
             if countdownDeadline != nil {
                 countdownDeadline = nil
                 countdownStartedAt = nil
@@ -835,10 +876,10 @@ public struct StateMachine: Equatable {
             }
         }
 
-        if let until = keepAwakeUntil, now >= until { keepAwakeUntil = nil }
+        if let until = keepAwakeUntil, now >= until { clearKeepAwake() }
 
-        // Max keep-awake failsafe.
-        if awakeHeld, let since = awakeSince, now.timeIntervalSince(since) >= config.maxKeepAwake {
+        // Max keep-awake failsafe. An explicit "Nechat vzhůru" overrides it (the battery and heat guards still apply).
+        if awakeHeld, !keepAwakeActive(now), let since = awakeSince, now.timeIntervalSince(since) >= config.maxKeepAwake {
             trip(.maxDuration, now: now, fx: &fx)
             return
         }
@@ -873,7 +914,7 @@ public struct StateMachine: Equatable {
             countdownStartedAt = nil
             fx.append(.dismissCountdown)
         }
-        keepAwakeUntil = nil
+        clearKeepAwake()
         fx.append(.notifyGuard(reason))
         if awakeHeld { fx.append(.releaseAwake) }
         awakeHeld = false
@@ -902,7 +943,7 @@ public struct StateMachine: Equatable {
         guard let reason else { return }
         countdownDeadline = nil
         countdownStartedAt = nil
-        keepAwakeUntil = nil
+        clearKeepAwake()
         fx.append(.dismissCountdown)
         fx.append(.sleepDecision(SleepDecisionRecord(date: now, trigger: .countdownCancelled, slept: false, reason: reason)))
         // Someone is back at the Mac: "Připraveno", not "Hotovo · Mac běží normálně".
@@ -970,7 +1011,7 @@ public struct StateMachine: Equatable {
                     let record = SleepDecisionRecord(date: now, trigger: .finished, slept: false, reason: g.reason)
                     fx.append(.sleepDecision(record))
                     handedBack = record
-                    keepAwakeUntil = nil
+                    clearKeepAwake()
                     forceArmed(now: now, fx: &fx)
                     return
                 }

@@ -539,6 +539,9 @@ struct HoverRowButtonStyle: ButtonStyle {
 /// and the usage card. Neutral glass buttons; never tinted with the accent.
 struct FooterBar: View {
     let model: AppModel
+    /// `@State` is a macro the Command Line Tools cannot expand (see HoverRowButtonStyle): a `@StateObject` holds it.
+    private final class Custom: ObservableObject { @Published var shown = false }
+    @StateObject private var custom = Custom()
 
     var body: some View {
         HStack(spacing: 8) {
@@ -552,10 +555,15 @@ struct FooterBar: View {
                 .numericTransition()
                 .accessibilityHidden(model.vigilLine == nil)
             Spacer(minLength: 4)
-            Button { model.keepAwake() } label: { Label { Text("1 h").fontDesign(.rounded) } icon: { Image(systemName: "plus") } }
-                .disabled(!model.enabled)
-                .help(L("Keep the Mac awake for another hour"))
-                .accessibilityLabel(L("Keep the Mac awake for another hour"))
+            if model.keepAwakeRunning {
+                Button(L("Cancel")) { model.cancelKeepAwake() }
+                    .help(L("Stop keeping the Mac awake"))
+            } else {
+                KeepAwakeButton(model: model) { custom.shown = true }
+                    .popover(isPresented: $custom.shown, arrowEdge: .bottom) {
+                        CustomKeepAwake(model: model) { custom.shown = false }
+                    }
+            }
             Button { model.sleepNow() } label: { Label(L("Sleep"), systemImage: "moon.fill") }
                 .help(L("Put the Mac to sleep now"))
                 .accessibilityLabel(L("Put the Mac to sleep now"))
@@ -563,6 +571,73 @@ struct FooterBar: View {
         .controlSize(.small)
         .vigilButtonStyle()
         .tint(nil)
+    }
+}
+
+/// "Nechat vzhůru" as a split button: the click repeats the last duration, the arrow offers 30 min to 8 h,
+/// "Do odvolání" and "Vlastní…". Shared by the popover and the usage card.
+struct KeepAwakeButton: View {
+    let model: AppModel
+    let custom: () -> Void
+
+    var body: some View {
+        let last = model.settings.ui.lastKeepAwake
+        Menu {
+            ForEach(KeepAwakeDuration.presets, id: \.self) { d in
+                Button(Format.keepAwake(d)) { model.keepAwake(d) }
+            }
+            Divider()
+            Button(L("Custom…"), action: custom)
+        } label: {
+            Label { Text(Format.keepAwakeShort(last)).fontDesign(.rounded) } icon: { Image(systemName: "plus") }
+        } primaryAction: {
+            model.keepAwake()
+        }
+        .menuStyle(.button)
+        .fixedSize()
+        .disabled(!model.enabled)
+        .help(L("Keep the Mac awake: %@", Format.keepAwake(last)))
+        .accessibilityLabel(L("Keep the Mac awake: %@", Format.keepAwake(last)))
+    }
+}
+
+/// "Vlastní…": hours and minutes.
+struct CustomKeepAwake: View {
+    let model: AppModel
+    let close: () -> Void
+    private final class Choice: ObservableObject {
+        @Published var hours = 3
+        @Published var minutes = 0
+    }
+    @StateObject private var choice = Choice()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L("Keep the Mac awake for")).font(.headline)
+            HStack(spacing: 8) {
+                Picker(L("Hours"), selection: $choice.hours) {
+                    ForEach(0..<25) { Text("\($0) h").tag($0) }
+                }
+                .labelsHidden().fixedSize()
+                Picker(L("Minutes"), selection: $choice.minutes) {
+                    ForEach(Array(stride(from: 0, to: 60, by: 5)), id: \.self) { Text("\($0) min").tag($0) }
+                }
+                .labelsHidden().fixedSize()
+            }
+            HStack {
+                Spacer()
+                Button(L("Cancel"), action: close).keyboardShortcut(.cancelAction)
+                Button(L("Keep awake")) {
+                    model.keepAwake(.minutes(choice.hours * 60 + choice.minutes))
+                    close()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(choice.hours * 60 + choice.minutes == 0)
+            }
+        }
+        .controlSize(.regular)
+        .padding(16)
+        .frame(width: 260)
     }
 }
 

@@ -200,7 +200,7 @@ private let vigil = PowerAssertion(pid: 500, process: "Vigil", type: "PreventUse
     @Test func keepAwakeExpiryWithSomeoneAtTheMacDoesNotSleep() {
         // Today's second incident: "+1 h" ran out while the lid was open.
         var m = machine(presence: atTheMac) { $0.graceSeconds = 300 }
-        _ = m.handle(.keepAwake, at: at(0))
+        _ = m.handle(.keepAwake(.minutes(60)), at: at(0))
         #expect(m.awakeHeld)
         let fx = m.handle(.tick, at: at(3600))
         #expect(!fx.power.contains(.sleepNow))

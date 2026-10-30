@@ -460,6 +460,9 @@ final class AppModel {
         return until.timeIntervalSince(now)
     }
 
+    /// "Nechat vzhůru" is running (for a while or until cancelled).
+    var keepAwakeRunning: Bool { machine.keepAwakeActive(now) }
+
     var workingSessions: [Session] { machine.workingSessions }
 
     /// How long the longest-running working session has been working.
@@ -529,17 +532,20 @@ final class AppModel {
     /// Progress toward sleep for the track: nil means indeterminate (Claude works, no timer running).
     var sleepProgress: Double? {
         if phase == .countdown { return 1 - countdownProgress }
-        if let r = keepAwakeRemaining, settings.config.manualKeepAwake > 0 {
-            return min(1, max(0, 1 - r / settings.config.manualKeepAwake))
+        if let r = keepAwakeRemaining, let start = machine.keepAwakeStartedAt, let until = machine.keepAwakeUntil,
+           until.timeIntervalSince(start) > 0 {
+            return min(1, max(0, 1 - r / until.timeIntervalSince(start)))
         }
         return phase == .working ? nil : 0
     }
 
-    /// How much longer Vigil keeps the Mac awake at most: the manual hour, or the max keep-awake failsafe.
+    /// How much longer Vigil keeps the Mac awake at most: the explicit keep-awake (which overrides the failsafe),
+    /// or the max keep-awake failsafe.
     var awakeRemaining: TimeInterval? {
-        guard machine.awakeHeld else { return nil }
+        guard machine.awakeHeld, !machine.keepAwakeIndefinite else { return nil }
+        if let r = keepAwakeRemaining { return r }
         let failsafe = machine.awakeSince.map { max(0, settings.config.maxKeepAwake - now.timeIntervalSince($0)) }
-        return [keepAwakeRemaining, failsafe].compactMap { $0 }.min()
+        return failsafe
     }
 
     var statusItemTitle: String? {
@@ -605,6 +611,8 @@ final class AppModel {
     /// The footer's left side (popover and usage card): only how long the Mac is held awake. Everything else
     /// is in the popover header, so the footer stays empty then.
     var vigilLine: String? {
+        if machine.keepAwakeIndefinite { return L("Mac awake until cancelled") }
+        if let r = keepAwakeRemaining { return L("Mac awake · %@", Format.elapsed(r)) }
         guard machine.awakeHeld, phase != .countdown else { return nil }
         if let r = awakeRemaining { return L("Mac awake · %@", Format.elapsed(r)) }
         return L("Mac awake")
@@ -658,9 +666,17 @@ final class AppModel {
 
     func toggle() { setEnabled(!enabled) }
     func sleepNow() { send(.sleepNow) }
-    func keepAwake() {
-        log.info("keep awake pressed")
-        send(.keepAwake)
+    /// "Nechat vzhůru": without a duration it repeats the last one chosen; a duration from the menu is remembered.
+    func keepAwake(_ duration: KeepAwakeDuration? = nil) {
+        let d = duration ?? settings.ui.lastKeepAwake
+        if let duration, duration != settings.ui.lastKeepAwake { update { $0.ui.lastKeepAwake = duration } }
+        log.info("keep awake: \(Format.keepAwake(d))")
+        send(.keepAwake(d))
+    }
+
+    func cancelKeepAwake() {
+        log.info("keep awake cancelled")
+        send(.cancelKeepAwake)
     }
     func cancelCountdown() { send(.cancelCountdown) }
 
@@ -998,6 +1014,20 @@ enum Format {
     }
 
     /// "1 subagent", "3 subagents" (Czech: 1 subagent, 2-4 subagenti, 0 and 5+ subagentů).
+    /// "30 min", "1 h", "1 h 30 min", "Do odvolání".
+    static func keepAwake(_ d: KeepAwakeDuration) -> String {
+        guard case .minutes(let m) = d else { return L("Until cancelled") }
+        let h = m / 60, rest = m % 60
+        if h == 0 { return "\(rest) min" }
+        return rest == 0 ? "\(h) h" : "\(h) h \(rest) min"
+    }
+
+    /// The split button's label: "1 h", "30 min", "∞".
+    static func keepAwakeShort(_ d: KeepAwakeDuration) -> String {
+        if case .untilCancelled = d { return "∞" }
+        return keepAwake(d)
+    }
+
     /// "1 shell běží", "2 shelly běží", "5 shellů běží".
     static func shells(_ n: Int) -> String {
         switch PluralCategory.czech(n) {

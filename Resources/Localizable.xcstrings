@@ -954,6 +954,17 @@
         }
       }
     },
+    "Custom…": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vlastní…"
+          }
+        }
+      }
+    },
     "Data from %@": {
       "extractionState": "manual",
       "localizations": {
@@ -1482,6 +1493,17 @@
         }
       }
     },
+    "Hours": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hodiny"
+          }
+        }
+      }
+    },
     "Hover delay": {
       "extractionState": "manual",
       "localizations": {
@@ -1746,13 +1768,13 @@
         }
       }
     },
-    "Keep the Mac awake for another hour": {
+    "Keep the Mac awake for": {
       "extractionState": "manual",
       "localizations": {
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nechat Mac vzhůru ještě 1 hodinu"
+            "value": "Nechat Mac vzhůru po dobu"
           }
         }
       }
@@ -1764,6 +1786,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Udrží Mac vzhůru, dokud Claude pracuje, a pak ho uspí."
+          }
+        }
+      }
+    },
+    "Keep the Mac awake: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nechat Mac vzhůru: %@"
           }
         }
       }
@@ -1966,6 +1999,17 @@
         }
       }
     },
+    "Mac awake until cancelled": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac vzhůru do odvolání"
+          }
+        }
+      }
+    },
     "Mac awake · %@": {
       "extractionState": "manual",
       "localizations": {
@@ -2061,6 +2105,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Maximální čekání na odpověď"
+          }
+        }
+      }
+    },
+    "Minutes": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minuty"
           }
         }
       }
@@ -3314,6 +3369,17 @@
         }
       }
     },
+    "Stop keeping the Mac awake": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přestat držet Mac vzhůru"
+          }
+        }
+      }
+    },
     "Stuck subagent limit": {
       "extractionState": "manual",
       "localizations": {
@@ -3629,6 +3695,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Zapnout"
+          }
+        }
+      }
+    },
+    "Until cancelled": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Do odvolání"
           }
         }
       }
