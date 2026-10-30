@@ -57,7 +57,8 @@ func subagent(_ kind: HookKind, _ agent: String, type: String? = "Explore", sess
         _ = m.handle(subagent(.subagentStart, "x1"), at: at(2))
         let before = m
         #expect(m.handle(subagent(.subagentStop, "ghost"), at: at(3)).isEmpty)
-        #expect(m == before)
+        #expect(m.sessions == before.sessions)
+        #expect(m.phase == before.phase)
         #expect(m.sessions[0].subagents.map(\.id) == ["x1"])
     }
 

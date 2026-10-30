@@ -37,6 +37,7 @@ struct PopoverView: View {
             }
 
             PrimarySessionView(model: model)
+            BackgroundShellsLine(model: model)
             SessionList(model: model)
 
             if !model.setup.checklistComplete {
@@ -258,6 +259,38 @@ struct WaitingLine: View {
             Button(L("Open"), action: open)
                 .controlSize(.small)
                 .vigilButtonStyle()
+        }
+    }
+}
+
+/// "1 shell běží · npm test" with Ignore, one line per session whose background shells keep the Mac awake.
+/// Shared by the popover and the usage card.
+struct BackgroundShellsLine: View {
+    let model: AppModel
+
+    var body: some View {
+        let rows = model.machine.sessions.compactMap { s -> (Session, [BackgroundShell])? in
+            let shells = model.machine.activeShells(s)
+            return shells.isEmpty ? nil : (s, shells)
+        }
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(rows, id: \.0.id) { session, shells in
+                    HStack(spacing: 6) {
+                        Image(systemName: "terminal").foregroundStyle(.secondary).accessibilityHidden(true)
+                        Text(Format.shells(shells.count) + " · " + shells.map(\.command).joined(separator: ", "))
+                            .lineLimit(1).truncationMode(.tail)
+                            .help(shells.map(\.command).joined(separator: "\n"))
+                        Spacer(minLength: 4)
+                        Button(L("Ignore")) { shells.forEach { model.ignoreShell($0, in: session) } }
+                            .controlSize(.small)
+                            .vigilButtonStyle()
+                            .help(L("Let the Mac sleep even though this shell is still running"))
+                    }
+                    .font(.footnote)
+                }
+            }
+            .transition(.opacity)
         }
     }
 }

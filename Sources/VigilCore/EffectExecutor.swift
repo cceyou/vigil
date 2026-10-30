@@ -64,9 +64,11 @@ public actor EffectExecutor {
                 held = false
             case .sleepNow:
                 await power.sleepNow()
-            case .showCountdown:
+            case .showCountdown(let deadline):
+                Log.shared.info("countdown started: sleep in \(Int(deadline.timeIntervalSinceNow.rounded())) s unless something gets busy")
                 notifier?.postCountdown(deadline: Date(), seconds: graceSeconds)
             case .dismissCountdown:
+                Log.shared.info("countdown ended")
                 notifier?.removeCountdown()
             case .notifyGuard(let reason):
                 Log.shared.warning("guard tripped: \(reason.rawValue)")

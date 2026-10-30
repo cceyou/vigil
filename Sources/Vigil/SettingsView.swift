@@ -54,11 +54,19 @@ struct SettingsView: View {
                     Text(L("Grace period"))
                     Text(L("Wait this long after Claude finishes before sleeping."))
                 }
+                Picker(selection: config(\.backgroundShells)) {
+                    Text(L("While running, except servers")).tag(BackgroundShellPolicy.exceptServers)
+                    Text(L("Always, while running")).tag(BackgroundShellPolicy.always)
+                    Text(L("Ignore")).tag(BackgroundShellPolicy.ignore)
+                } label: {
+                    Text(L("Background shells"))
+                    Text(L("Commands Claude runs in the background. A server (npm run dev, stripe listen, tail -f) counts only while it uses CPU."))
+                }
                 Picker(selection: config(\.maxKeepAwake)) {
-                    ForEach([1.0, 2, 4, 8, 12, 24].map { $0 * 3600 }, id: \.self) { Text(Durations.short($0)).tag($0) }
+                    ForEach([4.0, 8, 12, 24].map { $0 * 3600 }, id: \.self) { Text(Durations.short($0)).tag($0) }
                 } label: {
                     Text(L("Maximum keep-awake time"))
-                    Text(L("Failsafe: restore normal sleep and sleep after this long."))
+                    Text(L("Failsafe: sleep after 30 minutes without any sign of work, and after this long in any case."))
                 }
                 Picker(selection: config(\.stuckSubagentLimit)) {
                     ForEach([0.5, 1, 2, 4].map { $0 * 3600 }, id: \.self) { Text(Durations.short($0)).tag($0) }

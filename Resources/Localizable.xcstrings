@@ -89,6 +89,34 @@
         }
       }
     },
+    "%d shells running": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d shellů běží"
+          }
+        }
+      }
+    },
+    "%d shells running (2-4)": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d shelly běží"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d shells running"
+          }
+        }
+      }
+    },
     "%d subagents": {
       "extractionState": "manual",
       "localizations": {
@@ -168,6 +196,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "+1 krok"
+          }
+        }
+      }
+    },
+    "1 shell running": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 shell běží"
           }
         }
       }
@@ -370,6 +409,17 @@
         }
       }
     },
+    "Always, while running": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vždy, dokud běží"
+          }
+        }
+      }
+    },
     "An estimate, not a promise. It never affects sleep.": {
       "extractionState": "manual",
       "localizations": {
@@ -443,6 +493,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vzhůru ještě %@"
+          }
+        }
+      }
+    },
+    "Background shells": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shelly na pozadí"
           }
         }
       }
@@ -790,6 +851,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Closed"
+          }
+        }
+      }
+    },
+    "Commands Claude runs in the background. A server (npm run dev, stripe listen, tail -f) counts only while it uses CPU.": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Příkazy, které Claude spustí na pozadí. Server (npm run dev, stripe listen, tail -f) se počítá, jen když pracuje (CPU)."
           }
         }
       }
@@ -1168,13 +1240,13 @@
         }
       }
     },
-    "Failsafe: restore normal sleep and sleep after this long.": {
+    "Failsafe: sleep after 30 minutes without any sign of work, and after this long in any case.": {
       "extractionState": "manual",
       "localizations": {
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pojistka: po této době se obnoví běžný spánek a Mac se uspí."
+            "value": "Pojistka: uspat po 30 minutách bez známky práce a v každém případě po této době."
           }
         }
       }
@@ -1454,6 +1526,17 @@
         }
       }
     },
+    "Ignore": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignorovat"
+          }
+        }
+      }
+    },
     "In progress": {
       "extractionState": "manual",
       "localizations": {
@@ -1681,6 +1764,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nechte ho vychladnout na rovné ploše; Vigil pak pokračuje sám."
+          }
+        }
+      }
+    },
+    "Let the Mac sleep even though this shell is still running": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nechat Mac uspat, i když tento shell ještě běží"
           }
         }
       }
@@ -3788,6 +3882,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Když Claude čeká na odpověď"
+          }
+        }
+      }
+    },
+    "While running, except servers": {
+      "extractionState": "manual",
+      "localizations": {
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dokud běží, kromě serverů"
           }
         }
       }

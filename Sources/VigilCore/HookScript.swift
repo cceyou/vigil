@@ -20,7 +20,9 @@ public enum HookScript {
       exit 0
     fi
 
-    # Walk up the process tree to find the Claude process (claude / node). Costs ~7 ms.
+    # Walk up the process tree to find this session's Claude process (claude / node). Costs ~7 ms.
+    # A background session (claude --bg) runs as "claude bg-spare" under "claude bg-pty-host" under the shared
+    # "claude daemon": the session is the bg-spare process, never the pty host or the daemon above it.
     PID=0
     set -f
     p=$$
@@ -33,7 +35,8 @@ public enum HookScript {
       name="$*"
       name=${name##*/}
       case "$name" in
-        claude|claude-code|node) PID=$p; break ;;
+        "claude bg-pty"*) ;;
+        claude|claude-code|node|"claude bg-"*) PID=$p; break ;;
       esac
       p=$ppid
       i=$((i + 1))

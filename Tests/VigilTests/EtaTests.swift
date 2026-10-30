@@ -125,7 +125,8 @@ private func hookEvent(_ e: Event) -> HookEvent {
     }
 
     @Test func estimateNeverFeedsTheStateMachine() {
-        // Same hook stream with and without task events: identical sleep decisions.
+        // Same hook stream with and without task events: identical sleep decisions. (Task events do count as
+        // activity of a known session, which only matters inside the recent-activity window.)
         func run(_ events: [(Event, TimeInterval)]) -> (StateMachine, [[Effect]]) {
             var m = machine()
             let fx = events.map { m.handle($0.0, at: at($0.1)) }
@@ -138,7 +139,8 @@ private func hookEvent(_ e: Event) -> HookEvent {
                                                   (hook(.stop), 60), (.tick, 90)]
         let (a, fa) = run(base)
         let (b, fb) = run(withTasks)
-        #expect(a == b)
+        #expect(a.phase == b.phase && a.awakeHeld == b.awakeHeld && a.countdownDeadline == b.countdownDeadline)
+        #expect(a.sessions.map(\.state) == b.sessions.map(\.state))
         #expect(fa.flatMap { $0 } == fb.flatMap { $0 })
         // A task event for an unknown session creates nothing in the state machine.
         var m = machine()

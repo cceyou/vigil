@@ -20,6 +20,10 @@ public enum HookEventParser {
         let toolName = (payload["tool_name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         return HookEvent(kind: kind, sessionID: sessionID, cwd: cwd, pid: pid, agentID: agentID, agentType: agentType,
                          notificationType: notificationType, toolName: toolName,
-                         taskSignals: TaskSignalParser.parse(kind: kind, payload: payload))
+                         taskSignals: TaskSignalParser.parse(kind: kind, payload: payload),
+                         source: (payload["source"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                         backgroundTasks: BackgroundTaskParser.reported(payload),
+                         startedShell: kind == .postToolUse ? BackgroundTaskParser.startedShell(payload) : nil,
+                         endedTaskIDs: BackgroundTaskParser.ended(payload))
     }
 }

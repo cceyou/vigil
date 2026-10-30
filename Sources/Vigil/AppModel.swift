@@ -99,6 +99,11 @@ final class AppModel {
     @ObservationIgnored private var jobs: AsyncStream<Job>.Continuation!
     @ObservationIgnored private var timerTask: Task<Void, Never>?
     @ObservationIgnored private var tickCount = 0
+    /// Finds Claude's background shells among its processes and watches their CPU.
+    @ObservationIgnored private var shellTracker = ShellProcessTracker()
+    /// Last logged busy reasons per session: only changes are logged.
+    @ObservationIgnored private var loggedBusy: [String: String] = [:]
+    @ObservationIgnored private var lastDryRunBusyLog = Date.distantPast
     @ObservationIgnored private var signalSources: [DispatchSourceSignal] = []
     @ObservationIgnored var onChange: (() -> Void)?
     @ObservationIgnored var onOpenWindow: ((AuxWindow) -> Void)?
@@ -262,12 +267,64 @@ final class AppModel {
     func send(_ event: Event) {
         let date = Date()
         let before = machine.sessions
+        let wasBusy = Dictionary(before.map { ($0.id, machine.busyForChime($0)) }, uniquingKeysWith: { a, _ in a })
         let effects = machine.handle(event, at: date)
-        // The sound plays right away, before the effects (and any sleep countdown) run.
-        for cue in chime.observe(event, before: before, after: machine.sessions, at: date) { log.info("sound: \(cue.rawValue)") }
+        // The sound plays right away, before the effects (and any sleep countdown) run. It follows the same busy
+        // rule as sleep (shells and subagents included), without the recent-activity window.
+        let m = machine
+        for cue in chime.observe(event, before: before, after: machine.sessions, at: date,
+                                 wasBusy: { wasBusy[$0.id] ?? false }, isBusy: { m.busyForChime($0) }) {
+            log.info("sound: \(cue.rawValue)")
+        }
         if !effects.isEmpty { jobs?.yield(.effects(effects)) }
+        logBusyChanges()
         now = Date()
         onChange?()
+    }
+
+    /// One line whenever a session's busy reasons change: "busy ferrun (7335456a): shell active (sleep 300)".
+    /// In dry run also "would NOT sleep: …" once a minute while something is busy.
+    private func logBusyChanges() {
+        var current: [String: String] = [:]
+        for s in machine.sessions {
+            let reasons = machine.busyReasons(s)
+            let text = reasons.isEmpty ? "not busy" : reasons.map(\.logText).joined(separator: ", ")
+            current[s.id] = text
+            if loggedBusy[s.id] != text {
+                log.info("busy \(s.projectName) (\(s.id.prefix(8))): \(text)")
+            }
+        }
+        loggedBusy = current
+        guard settings.dryRun else { return }
+        let busy = machine.sessions.flatMap { machine.busyReasons($0) }
+        if !busy.isEmpty, machine.phase == .working, Date().timeIntervalSince(lastDryRunBusyLog) >= 60 {
+            lastDryRunBusyLog = Date()
+            log.info("[dry-run] would NOT sleep: \(busy.map(\.logText).joined(separator: ", "))")
+        } else if busy.isEmpty {
+            lastDryRunBusyLog = .distantPast
+        }
+    }
+
+    /// Every few seconds: which background shells still run, how much CPU they use, and whether the sessions'
+    /// processes changed (activity for the silence failsafe).
+    private func sampleProcesses() {
+        let infos = machine.sessions.compactMap { s -> ShellProcessTracker.SessionInfo? in
+            guard let pid = s.pid else { return nil }
+            return .init(id: s.id, pid: pid, shells: s.shells.map { ($0.id, $0.command) })
+        }
+        guard !infos.isEmpty else { return }
+        let table = ProcessTableReader.descendants(of: Set(infos.map(\.pid)))
+        let observations = shellTracker.observe(table, sessions: infos, at: Date())
+        for o in observations {
+            for (id, shell) in o.shells where shell.exited { log.info("shell \(id) of \(o.sessionID.prefix(8)) ended (process gone)") }
+        }
+        send(.processes(observations))
+    }
+
+    /// "Ignorovat" next to a running background shell.
+    func ignoreShell(_ shell: BackgroundShell, in session: Session) {
+        log.info("shell \(shell.id) of \(session.id.prefix(8)) ignored by the user: \(shell.command.prefix(60))")
+        send(.ignoreShell(sessionID: session.id, shellID: shell.id))
     }
 
     private func receive(_ event: HookEvent) {
@@ -299,7 +356,15 @@ final class AppModel {
     /// Lid, displays, input idle time and assertions, read fresh (a few milliseconds). Only the state machine's
     /// sleep gate uses it; it is sent every second and before every hook event.
     private func refreshPresence() {
-        let effects = machine.handle(.presence(PresenceReader.snapshot()), at: Date())
+        var snapshot = PresenceReader.snapshot()
+        // Testing aid, dry run only: `defaults write cz.krystof.vigil vigil.debug.simulateLidClosed -bool true`
+        // makes the sleep gate see a closed lid with nobody at the Mac.
+        if settings.dryRun, UserDefaults.standard.bool(forKey: "vigil.debug.simulateLidClosed") {
+            snapshot.lidClosed = true
+            snapshot.externalDisplays = 0
+            snapshot.idleSeconds = max(snapshot.idleSeconds, 3600)
+        }
+        let effects = machine.handle(.presence(snapshot), at: Date())
         if !effects.isEmpty { jobs?.yield(.effects(effects)) }
     }
 
@@ -330,6 +395,7 @@ final class AppModel {
         postEtaNotifications()
         let rolled = usage.rollover(at: Date())
         if !rolled.isEmpty { usageStore.save(usage); post(rolled) }
+        if tickCount % 5 == 0 { sampleProcesses() }
         if tickCount % 10 == 0 { maintenance() }
         if settings.dryRun { dryRunLog = Array(dryPower.recorded.suffix(6)) }
     }
@@ -588,7 +654,10 @@ final class AppModel {
 
     func toggle() { setEnabled(!enabled) }
     func sleepNow() { send(.sleepNow) }
-    func keepAwake() { send(.keepAwake) }
+    func keepAwake() {
+        log.info("keep awake pressed")
+        send(.keepAwake)
+    }
     func cancelCountdown() { send(.cancelCountdown) }
 
     func update(_ mutate: (inout AppSettings) -> Void) {
@@ -913,6 +982,15 @@ enum Format {
     }
 
     /// "1 subagent", "3 subagents" (Czech: 1 subagent, 2-4 subagenti, 0 and 5+ subagentů).
+    /// "1 shell běží", "2 shelly běží", "5 shellů běží".
+    static func shells(_ n: Int) -> String {
+        switch PluralCategory.czech(n) {
+        case .one: return L("1 shell running")
+        case .few: return L("%d shells running (2-4)", n)
+        case .many: return L("%d shells running", n)
+        }
+    }
+
     static func subagents(_ n: Int) -> String {
         switch PluralCategory.czech(n) {
         case .one: return L("1 subagent")

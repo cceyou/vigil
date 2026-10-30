@@ -64,9 +64,11 @@ public enum SystemSounds {
 /// Decides when to play a sound, from the state machine's sessions before and after each event.
 ///
 /// Kept beside the state machine rather than inside it: sound never affects sleep, so it adds no effects there.
-/// - done: a session was busy (main agent working or waiting, or a subagent running) and a Stop or the last
-///   SubagentStop left it idle with no subagents. Never on a removed session (Ctrl+C, killed, SessionEnd),
-///   never on idle_prompt, never for a turn shorter than `minTurnDuration`.
+/// - done: a session was busy (main agent working or waiting, a subagent or a background shell running) and a
+///   Stop, a SubagentStop or the end of its last background shell left it with nothing running. Never on a removed
+///   session (Ctrl+C, killed, SessionEnd), never on idle_prompt, never for a turn shorter than `minTurnDuration`.
+///   The app passes the state machine's busy rule (`StateMachine.busyForChime`), so it never beeps while
+///   shells or subagents still run.
 /// - waiting: a session entered `.waiting` through a waiting-type Notification or PermissionRequest.
 /// - Each cue plays at most once per `coalesceWindow`, so several sessions finishing together beep once.
 public final class ChimeMachine {
@@ -83,22 +85,33 @@ public final class ChimeMachine {
         self.player = player
     }
 
-    private static func isBusy(_ s: Session) -> Bool { s.isWorking || s.state == .waiting }
+    private static func defaultBusy(_ s: Session) -> Bool { s.isWorking || s.state == .waiting || !s.shells.isEmpty }
 
     /// Call with the sessions before and after `StateMachine.handle(event)`. Returns the cues it played.
+    /// `wasBusy` / `isBusy` judge a session before and after the event (default: turn, waiting, subagents, shells).
     @discardableResult
-    public func observe(_ event: Event, before: [Session], after: [Session], at now: Date) -> [ChimeCue] {
+    public func observe(_ event: Event, before: [Session], after: [Session], at now: Date,
+                        wasBusy: ((Session) -> Bool)? = nil, isBusy: ((Session) -> Bool)? = nil) -> [ChimeCue] {
+        let wasBusy = wasBusy ?? Self.defaultBusy
+        let isBusy = isBusy ?? Self.defaultBusy
         var cues: [ChimeCue] = []
         let previous = Dictionary(before.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        func finished(_ id: String) -> Bool {
+            guard let old = previous[id], let new = after.first(where: { $0.id == id }), wasBusy(old), !isBusy(new),
+                  settings.doneEnabled else { return false }
+            let started = turnStart[id] ?? old.workingSince ?? old.stateSince
+            return now.timeIntervalSince(started) >= settings.minTurnDuration
+        }
 
+        if case .processes(let observations) = event, observations.contains(where: { finished($0.sessionID) }) {
+            // The last background shell ended (its process is gone) with nothing else running.
+            cues.append(.done)
+        }
         if case .hook(let hook) = event, let new = after.first(where: { $0.id == hook.sessionID }) {
             let old = previous[hook.sessionID]
             switch hook.kind {
             case .stop, .subagentStop:
-                if let old, Self.isBusy(old), !Self.isBusy(new), settings.doneEnabled {
-                    let started = turnStart[hook.sessionID] ?? old.workingSince ?? old.stateSince
-                    if now.timeIntervalSince(started) >= settings.minTurnDuration { cues.append(.done) }
-                }
+                if finished(hook.sessionID) { cues.append(.done) }
             case .notification, .permissionRequest:
                 // Also for a session Vigil first sees on its prompt. Notification + PermissionRequest for the
                 // same prompt: only the first one changes the state, so it plays once.
@@ -109,7 +122,7 @@ public final class ChimeMachine {
         }
 
         // Track turn starts: a session's turn begins when it becomes busy and ends when it is idle or gone.
-        let busyNow = Set(after.filter(Self.isBusy).map(\.id))
+        let busyNow = Set(after.filter(isBusy).map(\.id))
         for id in busyNow where turnStart[id] == nil { turnStart[id] = now }
         for id in turnStart.keys where !busyNow.contains(id) { turnStart[id] = nil }
 

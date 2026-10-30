@@ -15,8 +15,13 @@ func permissionPrompt(_ id: String = "a") -> Event { hook(.notification, id, typ
 
 /// A state machine whose sleep gate sees an unattended Mac (lid closed, no external display), so forced sleeps
 /// are allowed. Tests about the gate itself pass their own `presence`.
+///
+/// The recent-activity window and the silence failsafe start off here, so the tests of the core rules (turn,
+/// subagents, waiting, countdown) see Stop take effect at once; `BusyTests` turns them on (or uses `Config()`).
 func machine(enabled: Bool = true, presence: PresenceSnapshot? = .away, _ configure: (inout Config) -> Void = { _ in }) -> StateMachine {
     var config = Config()
+    config.recentActivityWindow = 0
+    config.silenceLimit = 0
     configure(&config)
     return StateMachine(enabled: enabled, config: config, presence: presence)
 }

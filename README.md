@@ -114,8 +114,17 @@ Claude Code ──hook──▶ hook.sh ──nc -U──▶ vigil.sock ──�
 
 **Subagents.** The main agent can end its turn (`Stop`) while subagents it started keep working. Vigil keeps a set of active subagents per session, keyed by `agent_id` (with `agent_type` and start time): `SubagentStart` adds one, `SubagentStop` removes it. A `SubagentStop` for an agent Vigil never saw start (for example Vigil launched mid-session) is ignored.
 
+**Busy: one derived state per session** (`StateMachine.busyReasons`). A session keeps the Mac awake while it has any of these, and every change is logged (`busy ferrun (7335456a): shell active (npm test)`):
+- **turn**: `UserPromptSubmit` without a `Stop` since. Auto-continued turns (a background task finished and Claude goes on by itself) arrive as `UserPromptSubmit` too, carrying a `<task-notification>` or an `<agent-message>`.
+- **subagents**: `SubagentStart` without `SubagentStop`, matched by `agent_id`, background agents included. A tool call carrying an unknown `agent_id` adopts that agent (it started before Vigil did).
+- **background shells**: a `Bash` call with `run_in_background` (its `PostToolUse` returns `backgroundTaskId`). `Stop` and `SubagentStop` carry Claude Code's own list, `background_tasks`, which is the main signal: a shell listed as `running` keeps the session busy until it ends, whatever its CPU (a `gh run` wait loop uses almost none and is still work). It ends with the `<task-notification>` Claude Code feeds back, `TaskStop`/`KillShell`, the next `background_tasks` without it, or when its process disappears. Vigil finds the process among the descendants of the session's Claude process (the `eval '…'` of Claude Code's wrapper shell) every 5 s and watches the CPU of its process tree.
+  - **Servers** (`npm/pnpm/yarn run dev`, `next dev`, `vite`, `stripe listen`, `serve`, `http.server`, `docker compose up`, `tail -f`, …) run until stopped, so they count only while they work: after 5 minutes under 2 % CPU (averaged over the last 5 minutes) they no longer keep the Mac awake.
+  - Settings ▸ *Shelly na pozadí*: *Dokud běží, kromě serverů* (default), *Vždy, dokud běží*, *Ignorovat*. The popover and the card show *1 shell běží · npm test* with **Ignorovat** for a single shell.
+- **recent activity**: any activity hook (`PostToolUse`, `SubagentStart`, a known `SubagentStop`, `TaskCreated`/`TaskCompleted`, `UserPromptSubmit`, `PermissionRequest`, `SessionStart` with `source: compact`) in the last 2 minutes. Compaction is activity, never a fresh start: no `SessionStart` (`resume`, `clear`, `compact`) resets a session. `Stop`, `SessionEnd`, `Notification` and the `SubagentStop`s of Claude Code's internal agents (no `agent_type`, unknown `agent_id`: away summary, compaction) are not activity and are ignored.
+- **waiting** for your answer (below).
+
 **Rules**
-- A session is **working** if its main agent got `UserPromptSubmit` without a `Stop` since, **or** it has at least one active subagent.
+- A session is **working** while it is busy by the list above (waiting aside).
 - The Mac may sleep only when **all** sessions are idle by that definition or ended. A session **waiting for you** keeps the Mac awake under the default policy (see below).
 - `Stop` while subagents are still running only marks the main agent idle; no countdown starts. The countdown starts when the **last** `SubagentStop` arrives, and a `SubagentStart` during the countdown cancels it.
 - **Stuck-subagent guard**: a subagent with no `SubagentStop` for longer than the *stuck subagent limit* (default 2 h) is dropped with a warning in the log. `SessionEnd` or a dead Claude process clears all of that session's subagents.
@@ -123,6 +132,8 @@ Claude Code ──hook──▶ hook.sh ──nc -U──▶ vigil.sock ──�
 - If the gate says no, there is no countdown and no notification: Vigil releases its keep-awake at once, macOS sleeps by your Energy settings, and the island shows *Hotovo · Mac běží normálně*.
 - When the countdown expires: `pmset -a disablesleep 0` is restored **first**, the gate is asked once more with a fresh reading, then `pmset sleepnow`. Always in that order (the executor is a single ordered queue).
 - Ctrl+C fires no `Stop`, so every 10 s Vigil checks each session's PID with `kill(pid, 0)` and drops dead ones. A "working" session with no events for longer than the max duration is dropped too.
+- `hook.sh` records the session's own Claude process. A background session (`claude --bg`, the agents view) runs as `claude bg-spare` under `claude bg-pty-host` under one shared `claude daemon`: the hook takes the `bg-spare` process, never the shared ones above it (before, every background session got the daemon's PID).
+- **Silence failsafe**: work stops counting after **30 minutes without any activity**: no hook and no change in the session's processes (new or ended processes, or CPU used by anything under Claude except its helpers: caffeinate, MCP and language servers, Vigil's scripts). Long work with the lid closed is never cut while anything moves; the absolute limit is the max keep-awake (12 h).
 - **Waiting for your answer** (Settings ▸ *When Claude is waiting for an answer*):
   - *Keep awake* (default): a waiting session counts as busy, so you can answer permission prompts and questions from your phone through Claude Code Remote Control while the lid is closed. The island shows *Čeká* in orange. `PostToolUse` (or a new prompt) moves the session back to working once you have answered.
   - *Maximum wait for an answer* (default 2 h, 30 min to 8 h): after waiting that long Vigil notifies you and starts the normal sleep countdown. Answering later still works; the next wait gets a fresh timer.
@@ -171,7 +182,7 @@ A stuck `disablesleep 1` in a backpack is dangerous, so there are several indepe
 
 - **Restore on**: Quit, `SIGTERM`/`SIGINT`/`SIGHUP`, logout/shutdown, and at launch if `SleepDisabled = 1` without an active session. Every 10 s Vigil also re-checks and undoes a stuck value.
 - **Watchdog**: when `disablesleep 1` is set, a detached shell watches the app's PID and runs `sudo -n pmset -a disablesleep 0` if the app dies (crash or `kill -9`). Verified: restored ~0.6 s after `SIGKILL`.
-- **Max keep-awake** (default 8 h): restore, and sleep if the gate allows.
+- **Silence failsafe** (30 min without activity, see Rules) and **max keep-awake** (default 12 h, 4 to 24 h): restore, and sleep if the gate allows. Settings revision 4 moved everyone from the old 2-hour limit to 12 hours.
 - **Battery guard** (default 5 %, can be turned off): on battery below the threshold, restore normal sleep with a notification, and sleep at once if the gate allows (lid closed, no external display). Otherwise macOS takes over sleep instead of Vigil forcing it.
 - **Thermal guard**: `ProcessInfo.thermalState` of `.serious`/`.critical` with the lid closed: restore, and sleep immediately if the gate allows.
 
@@ -197,9 +208,9 @@ For a personal tool the sudoers rule is the simpler trade; if you distribute Vig
 
 ## Settings
 
-Watch Claude Code on/off, launch at login, grace period (10 s to 5 min), maximum keep-awake (1 to 24 h), stuck subagent limit (30 min, 1, 2 or 4 h), low-battery threshold, sleep with the lid open after inactivity (never / 5 / 10 / 20 min), waiting-for-an-answer policy and maximum wait (30 min to 8 h), island content (elapsed time / estimate), "almost done" notification, clear estimate history, install/update/remove hooks, install/remove sleep permission, Dry run, Run self-test, Open log. **Look**: accent colour (green, blue, orange, purple). **Edge notch and usage**: notch on/off, position on the edge, displays (all / main), hover delay, hide in full-screen apps, keyboard shortcut (record a new one, or turn it off), usage notifications, install/remove the status line.
+Watch Claude Code on/off, launch at login, grace period (10 s to 5 min), background shells, maximum keep-awake (4 to 24 h), stuck subagent limit (30 min, 1, 2 or 4 h), low-battery threshold, sleep with the lid open after inactivity (never / 5 / 10 / 20 min), waiting-for-an-answer policy and maximum wait (30 min to 8 h), island content (elapsed time / estimate), "almost done" notification, clear estimate history, install/update/remove hooks, install/remove sleep permission, Dry run, Run self-test, Open log. **Look**: accent colour (green, blue, orange, purple). **Edge notch and usage**: notch on/off, position on the edge, displays (all / main), hover delay, hide in full-screen apps, keyboard shortcut (record a new one, or turn it off), usage notifications, install/remove the status line.
 
-**Dry run** goes through the whole flow (working → idle → countdown → restore → sleep) but only logs `would run: pmset …`, and never calls `pmset`. Use *Simulate a session* to watch it happen (the simulated session includes a subagent that outlives the main agent's `Stop`).
+**Dry run** goes through the whole flow (working → idle → countdown → restore → sleep) but only logs `would run: pmset …`, and never calls `pmset`. While anything is busy it logs `[dry-run] would NOT sleep: shell active (sleep 300)` once a minute. For testing the closed-lid path at the desk, `defaults write cz.krystof.vigil vigil.debug.simulateLidClosed -bool true` makes the sleep gate see a closed lid with nobody at the Mac (dry run only; `defaults delete` it afterwards). Use *Simulate a session* to watch it happen (the simulated session includes a subagent that outlives the main agent's `Stop`).
 
 While subagents run, the session card reads *Hlavní agent + 2 subagenti*. When every main agent is done but subagents still run, the island keeps counting and the menu bar icon stays in the working state (its tooltip says *Subagents working*).
 

@@ -108,6 +108,7 @@ struct UsageCardView: View {
                         }
                     }
                 }
+                BackgroundShellsLine(model: model)
             }
             Hairline()
             FooterBar(model: model)

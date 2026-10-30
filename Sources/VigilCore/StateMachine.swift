@@ -48,6 +48,13 @@ public struct Session: Equatable, Identifiable, Sendable {
     public var finishedSubagentTime: TimeInterval = 0
     /// Waited longer than `Config.maxWaiting`: no longer keeps the Mac awake. Reset when a new wait starts.
     public var waitExpired = false
+    /// Background shells Claude started (Bash with `run_in_background`), until they end.
+    public var shells: [BackgroundShell] = []
+    /// Last sign of work: an activity hook (tool use, subagent, prompt, compaction) or a change in its processes.
+    /// Stop, SessionEnd and Notification are not activity.
+    public var lastActivityAt: Date = .distantPast
+    /// Subagents that already sent SubagentStop (the last 50), so a late tool call of theirs does not revive them.
+    public var endedAgentIDs: [String] = []
 
     public var projectName: String {
         guard let cwd, !cwd.isEmpty else { return "Claude Code" }
@@ -64,12 +71,36 @@ public struct Session: Equatable, Identifiable, Sendable {
     /// Since when the session has been busy (nil when it is not working).
     public var workingSince: Date? {
         if state == .working { return stateSince }
-        return subagents.map(\.startedAt).min()
+        return (subagents.map(\.startedAt) + shells.map(\.startedAt)).min()
     }
 
     /// Finished plus still-running subagent time.
     public func subagentTime(at now: Date) -> TimeInterval {
         finishedSubagentTime + subagents.reduce(0) { $0 + max(0, now.timeIntervalSince($1.startedAt)) }
+    }
+}
+
+/// Why a session keeps the Mac awake. A session is busy while it has at least one.
+public enum BusyReason: Equatable, Sendable {
+    /// The main agent is in a turn (UserPromptSubmit … Stop).
+    case turn
+    /// Waiting for an answer (under the keep-awake policy, up to `Config.maxWaiting`).
+    case waiting
+    /// Subagents between SubagentStart and SubagentStop, background agents included.
+    case subagents(Int)
+    /// A background shell that is still running (the command).
+    case shell(String)
+    /// An activity hook within `Config.recentActivityWindow`.
+    case recentActivity
+
+    public var logText: String {
+        switch self {
+        case .turn: return "turn active"
+        case .waiting: return "waiting for an answer"
+        case .subagents(let n): return "\(n) subagent\(n == 1 ? "" : "s") active"
+        case .shell(let c): return "shell active (\(c.prefix(60)))"
+        case .recentActivity: return "recent activity"
+        }
     }
 }
 
@@ -171,7 +202,8 @@ public struct Environment: Equatable, Sendable {
 
 public struct Config: Equatable, Codable, Sendable {
     public var graceSeconds: TimeInterval = 30
-    public var maxKeepAwake: TimeInterval = 8 * 3600
+    /// Absolute limit on one keep-awake stretch (an explicit "Nechat vzhůru" overrides it).
+    public var maxKeepAwake: TimeInterval = 12 * 3600
     /// Percent. 0 turns the guard off.
     public var lowBatteryThreshold: Int = 5
     /// "S otevřeným víkem uspat po nečinnosti": seconds without keyboard/mouse/trackpad input after which a
@@ -184,6 +216,18 @@ public struct Config: Equatable, Codable, Sendable {
     public var manualKeepAwake: TimeInterval = 3600
     /// A subagent with no SubagentStop for this long is dropped (a lost hook must not pin the Mac awake).
     public var stuckSubagentLimit: TimeInterval = 2 * 3600
+    /// "Shelly na pozadí".
+    public var backgroundShells: BackgroundShellPolicy = .exceptServers
+    /// Any activity hook keeps its session busy this long (background agents, auto-continued turns). 0 = off.
+    public var recentActivityWindow: TimeInterval = 120
+    /// The silence failsafe: a busy session without any activity (hook or process change) for this long no longer
+    /// keeps the Mac awake. 0 = off. `maxKeepAwake` stays the absolute limit.
+    public var silenceLimit: TimeInterval = 30 * 60
+    /// A server (dev server, `stripe listen`, `tail -f`) running this long with its CPU under `serverCPUThreshold`
+    /// counts as idle.
+    public var serverIdleAfter: TimeInterval = 5 * 60
+    /// Percent of one core, averaged over `serverIdleAfter`.
+    public var serverCPUThreshold: Double = 2
 
     public init() {}
 
@@ -199,6 +243,11 @@ public struct Config: Equatable, Codable, Sendable {
         maxWaiting = try c.decodeIfPresent(TimeInterval.self, forKey: .maxWaiting) ?? d.maxWaiting
         manualKeepAwake = try c.decodeIfPresent(TimeInterval.self, forKey: .manualKeepAwake) ?? d.manualKeepAwake
         stuckSubagentLimit = try c.decodeIfPresent(TimeInterval.self, forKey: .stuckSubagentLimit) ?? d.stuckSubagentLimit
+        backgroundShells = (try? c.decodeIfPresent(BackgroundShellPolicy.self, forKey: .backgroundShells)) ?? d.backgroundShells
+        recentActivityWindow = try c.decodeIfPresent(TimeInterval.self, forKey: .recentActivityWindow) ?? d.recentActivityWindow
+        silenceLimit = try c.decodeIfPresent(TimeInterval.self, forKey: .silenceLimit) ?? d.silenceLimit
+        serverIdleAfter = try c.decodeIfPresent(TimeInterval.self, forKey: .serverIdleAfter) ?? d.serverIdleAfter
+        serverCPUThreshold = try c.decodeIfPresent(Double.self, forKey: .serverCPUThreshold) ?? d.serverCPUThreshold
     }
 }
 
@@ -250,10 +299,19 @@ public struct HookEvent: Equatable, Sendable {
     public var toolName: String?
     /// Task list changes (TaskCreated/TaskCompleted, or TaskCreate/TaskUpdate/TodoWrite tool calls). ETA only.
     public var taskSignals: [TaskSignal]
+    /// SessionStart only: "startup", "resume", "clear" or "compact".
+    public var source: String?
+    /// Stop / SubagentStop: the session's background tasks at that moment. nil = the payload had no such field.
+    public var backgroundTasks: [ReportedTask]?
+    /// PostToolUse of a Bash call with `run_in_background`: the shell it started.
+    public var startedShell: ReportedTask?
+    /// Background tasks reported as over (a `<task-notification>` prompt, TaskStop, KillShell).
+    public var endedTaskIDs: [String]
 
     public init(kind: HookKind, sessionID: String, cwd: String? = nil, pid: Int32? = nil,
                 agentID: String? = nil, agentType: String? = nil, notificationType: String? = nil,
-                toolName: String? = nil, taskSignals: [TaskSignal] = []) {
+                toolName: String? = nil, taskSignals: [TaskSignal] = [], source: String? = nil,
+                backgroundTasks: [ReportedTask]? = nil, startedShell: ReportedTask? = nil, endedTaskIDs: [String] = []) {
         self.kind = kind
         self.sessionID = sessionID
         self.cwd = cwd
@@ -263,6 +321,10 @@ public struct HookEvent: Equatable, Sendable {
         self.notificationType = notificationType
         self.toolName = toolName
         self.taskSignals = taskSignals
+        self.source = source
+        self.backgroundTasks = backgroundTasks
+        self.startedShell = startedShell
+        self.endedTaskIDs = endedTaskIDs
     }
 }
 
@@ -281,6 +343,39 @@ public enum Event: Equatable, Sendable {
     /// A fresh reading of lid, displays, input idle time and assertions for the sleep gate. Send it about once
     /// per second (before `.tick`) and right before hook events.
     case presence(PresenceSnapshot)
+    /// What the process sampler saw of the sessions' processes (every few seconds).
+    case processes([ProcessObservation])
+    /// "Ignorovat" next to a running background shell.
+    case ignoreShell(sessionID: String, shellID: String)
+}
+
+/// One session's processes, as the process sampler saw them.
+public struct ProcessObservation: Equatable, Sendable {
+    public var sessionID: String
+    /// Its processes changed since the last sample (new or ended processes, CPU used): counts as activity.
+    public var activity: Bool
+    public var shells: [String: ShellObservation]
+
+    public init(sessionID: String, activity: Bool, shells: [String: ShellObservation] = [:]) {
+        self.sessionID = sessionID
+        self.activity = activity
+        self.shells = shells
+    }
+}
+
+public struct ShellObservation: Equatable, Sendable {
+    /// Its process is among the descendants of the session's Claude process.
+    public var found: Bool
+    /// It was found before and is gone now: the shell has ended.
+    public var exited: Bool
+    /// Average CPU of its process tree over the server window; nil until there is that much history.
+    public var cpuPercent: Double?
+
+    public init(found: Bool, exited: Bool = false, cpuPercent: Double? = nil) {
+        self.found = found
+        self.exited = exited
+        self.cpuPercent = cpuPercent
+    }
 }
 
 public enum Effect: Equatable, Sendable {
@@ -325,6 +420,8 @@ public struct StateMachine: Equatable {
     /// Claude finished but the gate refused a forced sleep: Vigil released its keep-awake and macOS sleeps on its
     /// own. The UI shows "Hotovo · Mac běží normálně". Cleared when Vigil holds the Mac awake again.
     public private(set) var handedBack: SleepDecisionRecord?
+    /// Time of the event being handled (or the last one): what the busy rules are evaluated at.
+    public private(set) var clock: Date = .distantPast
 
     public init(enabled: Bool = true, config: Config = Config(), presence: PresenceSnapshot? = nil) {
         self.enabled = enabled
@@ -339,8 +436,47 @@ public struct StateMachine: Equatable {
     /// The reason acquiring is currently blocked, if any (latch or environment guard).
     public var blockedReason: GuardReason? { latch ?? environmentGuard }
 
-    /// Sessions whose main agent or any subagent is working.
-    public var workingSessions: [Session] { sessions.filter(\.isWorking) }
+    /// Sessions doing work: a turn, subagents, a running background shell or recent activity (waiting is not work).
+    public var workingSessions: [Session] { sessions.filter { busyReasons($0).contains { $0 != .waiting } } }
+
+    /// Background shells that keep their session busy right now (by "Shelly na pozadí").
+    public func activeShells(_ s: Session) -> [BackgroundShell] {
+        s.shells.filter { shellCounts($0, at: clock) }
+    }
+
+    private func shellCounts(_ shell: BackgroundShell, at now: Date) -> Bool {
+        guard !shell.ignored else { return false }
+        switch config.backgroundShells {
+        case .ignore: return false
+        case .always: return true
+        case .exceptServers:
+            guard shell.isServer, now.timeIntervalSince(shell.startedAt) >= config.serverIdleAfter,
+                  let cpu = shell.cpuPercent else { return true }
+            return cpu >= config.serverCPUThreshold
+        }
+    }
+
+    /// The one place that decides whether a session keeps the Mac awake. Work (turn, subagents, shells, recent
+    /// activity) stops counting after `silenceLimit` without any activity; waiting has its own limit (`maxWaiting`).
+    public func busyReasons(_ s: Session) -> [BusyReason] {
+        let now = clock
+        var work: [BusyReason] = []
+        if s.state == .working { work.append(.turn) }
+        if !s.subagents.isEmpty { work.append(.subagents(s.subagents.count)) }
+        work += s.shells.filter { shellCounts($0, at: now) }.map { .shell($0.command) }
+        if config.recentActivityWindow > 0, now.timeIntervalSince(s.lastActivityAt) < config.recentActivityWindow {
+            work.append(.recentActivity)
+        }
+        if config.silenceLimit > 0, now.timeIntervalSince(s.lastActivityAt) >= config.silenceLimit { work = [] }
+        if s.state == .waiting, config.notificationPolicy == .keepAwake, !s.waitExpired { work.insert(.waiting, at: 0) }
+        return work
+    }
+
+    /// Busy for the done sound: the same rule without the recent-activity window and the silence failsafe, so the
+    /// sound plays when the work really ends (not two minutes later), and never while shells or subagents run.
+    public func busyForChime(_ s: Session) -> Bool {
+        s.state != .idle || !s.subagents.isEmpty || s.shells.contains { shellCounts($0, at: clock) }
+    }
 
     private var environmentGuard: GuardReason? {
         if config.lowBatteryThreshold > 0, environment.onBattery, let pct = environment.batteryPercent,
@@ -353,15 +489,7 @@ public struct StateMachine: Equatable {
         return nil
     }
 
-    private func isBlocking(_ session: Session) -> Bool {
-        // Running subagents keep a session busy even after the main agent sent Stop (or is waiting on the user).
-        if !session.subagents.isEmpty { return true }
-        switch session.state {
-        case .working: return true
-        case .waiting: return config.notificationPolicy == .keepAwake && !session.waitExpired
-        case .idle: return false
-        }
-    }
+    private func isBlocking(_ session: Session) -> Bool { !busyReasons(session).isEmpty }
 
     private var anyBlockingSession: Bool { sessions.contains(where: isBlocking) }
 
@@ -374,6 +502,7 @@ public struct StateMachine: Equatable {
 
     public mutating func handle(_ event: Event, at now: Date) -> [Effect] {
         var fx: [Effect] = []
+        clock = now
 
         switch event {
         case .hook(let hook):
@@ -440,6 +569,28 @@ public struct StateMachine: Equatable {
         case .presence(let snapshot):
             presence = snapshot
             checkCountdown(now: now, fx: &fx)
+
+        case .processes(let observations):
+            for o in observations {
+                guard let i = sessions.firstIndex(where: { $0.id == o.sessionID }) else { continue }
+                if o.activity { sessions[i].lastActivityAt = now }
+                for (id, seen) in o.shells {
+                    guard let k = sessions[i].shells.firstIndex(where: { $0.id == id }) else { continue }
+                    if seen.exited, sessions[i].shells[k].processFound {
+                        sessions[i].shells.remove(at: k)
+                        sessions[i].lastActivityAt = now
+                        continue
+                    }
+                    if seen.found { sessions[i].shells[k].processFound = true }
+                    if let cpu = seen.cpuPercent { sessions[i].shells[k].cpuPercent = cpu }
+                }
+            }
+
+        case .ignoreShell(let sessionID, let shellID):
+            if let i = sessions.firstIndex(where: { $0.id == sessionID }),
+               let k = sessions[i].shells.firstIndex(where: { $0.id == shellID }) {
+                sessions[i].shells[k].ignored = true
+            }
         }
 
         reconcile(now: now, fx: &fx)
@@ -456,8 +607,9 @@ public struct StateMachine: Equatable {
             return
 
         case .taskCreated, .taskCompleted:
-            // Task list progress only feeds the (information-only) work-time estimate. It must never change
-            // whether the Mac stays awake, so the state machine does not look at it at all.
+            // Task list progress feeds the (information-only) work-time estimate. Here it only counts as activity
+            // of a session already known: it never creates one.
+            if let index { sessions[index].lastActivityAt = now }
             return
 
         case .sessionEnd:
@@ -470,22 +622,38 @@ public struct StateMachine: Equatable {
             // Heartbeat. It wakes a session that was waiting on the user (a permission prompt that was approved
             // fires no UserPromptSubmit), and it adopts a session we have not seen yet (Vigil started or
             // restarted mid-task) - but only with a PID, so a dead process can always be pruned.
-            // It never revives an idle session: a late, out-of-order heartbeat must not pin the Mac awake.
-            guard let index else {
+            // It never turns an idle session back into a turn: as activity it keeps the session busy for the
+            // recent-activity window only, so a late, out-of-order heartbeat cannot pin the Mac awake.
+            let i: Int
+            if let index {
+                i = index
+                sessions[i].lastEventAt = now
+                if let pid = hook.pid { sessions[i].pid = pid }
+                if sessions[i].state == .waiting { setState(.working, at: i, now: now) }
+            } else {
                 guard let pid = hook.pid else { return }
                 sessions.append(Session(id: hook.sessionID, cwd: hook.cwd, pid: pid, state: .working,
                                         startedAt: now, lastEventAt: now, stateSince: now))
-                return
+                i = sessions.count - 1
             }
-            sessions[index].lastEventAt = now
-            if let pid = hook.pid { sessions[index].pid = pid }
-            if sessions[index].state == .waiting { setState(.working, at: index, now: now) }
+            sessions[i].lastActivityAt = now
+            // A tool call of a subagent we never saw start (it started before Vigil did): track it from here.
+            if let agentID = hook.agentID, !sessions[i].endedAgentIDs.contains(agentID),
+               !sessions[i].subagents.contains(where: { $0.id == agentID }) {
+                sessions[i].subagents.append(Subagent(id: agentID, type: Self.agentType(hook.agentType), startedAt: now))
+                sessions[i].maxSubagents = max(sessions[i].maxSubagents, sessions[i].subagents.count)
+            }
+            if let shell = hook.startedShell, !sessions[i].shells.contains(where: { $0.id == shell.id }) {
+                sessions[i].shells.append(BackgroundShell(id: shell.id, command: Self.shellLabel(shell), startedAt: now))
+            }
+            endTasks(hook.endedTaskIDs, at: i)
             return
 
         case .subagentStart:
             // Without an agent_id a later SubagentStop could never be matched, so it is not tracked.
             guard let agentID = hook.agentID, !agentID.isEmpty else { return }
             let i = sessionIndex(for: hook, existing: index, now: now)
+            sessions[i].lastActivityAt = now
             if !sessions[i].subagents.contains(where: { $0.id == agentID }) {
                 sessions[i].subagents.append(Subagent(id: agentID, type: Self.agentType(hook.agentType), startedAt: now))
                 sessions[i].maxSubagents = max(sessions[i].maxSubagents, sessions[i].subagents.count)
@@ -493,13 +661,18 @@ public struct StateMachine: Equatable {
             return
 
         case .subagentStop:
-            // Unknown session or agent (Vigil started mid-session, or the agent was already dropped): ignore.
+            // Unknown session or agent (Vigil started mid-session, the agent was already dropped, or one of Claude
+            // Code's internal agents with no agent_type, such as compaction or the away summary): ignored entirely.
             guard let index, let agentID = hook.agentID,
                   let a = sessions[index].subagents.firstIndex(where: { $0.id == agentID }) else { return }
             let agent = sessions[index].subagents.remove(at: a)
+            sessions[index].endedAgentIDs = Array((sessions[index].endedAgentIDs + [agentID]).suffix(50))
             sessions[index].finishedSubagentTime += max(0, now.timeIntervalSince(agent.startedAt))
             sessions[index].lastEventAt = now
+            sessions[index].lastActivityAt = now
             if let pid = hook.pid { sessions[index].pid = pid }
+            // Its background_tasks still lists the agent itself as running; the shells in it are current.
+            if let reported = hook.backgroundTasks { syncShells(reported, at: index, now: now) }
             return
 
         case .notification:
@@ -527,11 +700,65 @@ public struct StateMachine: Equatable {
         case .userPromptSubmit: newState = .working
         case .stop: newState = .idle
         case .notification, .permissionRequest: newState = .waiting
-        default: newState = nil // sessionStart: keeps current (idle for a new session)
+        // SessionStart never resets a session: resume, clear and compact keep whatever it was doing (a new
+        // session starts idle).
+        default: newState = nil
         }
         if let newState, sessions[i].state != newState { setState(newState, at: i, now: now) }
+
+        switch hook.kind {
+        case .userPromptSubmit, .permissionRequest:
+            // Auto-continued turns arrive as UserPromptSubmit too: a `<task-notification>` (a background shell
+            // ended) or an `<agent-message>` (a background agent handed back).
+            sessions[i].lastActivityAt = now
+            endTasks(hook.endedTaskIDs, at: i)
+        case .sessionStart where hook.source == "compact":
+            sessions[i].lastActivityAt = now
+        case .stop:
+            // background_tasks is the authoritative list of what still runs after the turn.
+            if let reported = hook.backgroundTasks {
+                syncShells(reported, at: i, now: now)
+                syncSubagents(reported, at: i, now: now)
+            }
+        default:
+            break
+        }
         // A fresh prompt lifts a manual-sleep latch.
         if hook.kind == .userPromptSubmit, latch == .manualSleep { latch = nil }
+    }
+
+    /// Keeps the shells Claude Code reports as running, adds the ones Vigil missed and drops the rest.
+    private mutating func syncShells(_ reported: [ReportedTask], at i: Int, now: Date) {
+        let running = reported.filter { $0.kind == .shell && $0.isRunning }
+        if running.contains(where: { r in !sessions[i].shells.contains { $0.id == r.id } }) { sessions[i].lastActivityAt = now }
+        sessions[i].shells = running.map { r in
+            sessions[i].shells.first { $0.id == r.id } ?? BackgroundShell(id: r.id, command: Self.shellLabel(r), startedAt: now)
+        }
+    }
+
+    /// At Stop no foreground subagent can still run: tracked subagents missing from the list lost their
+    /// SubagentStop and are dropped; running background agents Vigil never saw start are adopted.
+    private mutating func syncSubagents(_ reported: [ReportedTask], at i: Int, now: Date) {
+        let running = reported.filter { $0.kind == .subagent && $0.isRunning }
+        let ids = Set(running.map(\.id))
+        for agent in sessions[i].subagents where !ids.contains(agent.id) {
+            sessions[i].finishedSubagentTime += max(0, now.timeIntervalSince(agent.startedAt))
+        }
+        sessions[i].subagents.removeAll { !ids.contains($0.id) }
+        for r in running where !sessions[i].subagents.contains(where: { $0.id == r.id }) {
+            sessions[i].subagents.append(Subagent(id: r.id, type: Self.agentType(r.agentType), startedAt: now))
+        }
+        sessions[i].maxSubagents = max(sessions[i].maxSubagents, sessions[i].subagents.count)
+    }
+
+    private mutating func endTasks(_ ids: [String], at i: Int) {
+        guard !ids.isEmpty else { return }
+        sessions[i].shells.removeAll { ids.contains($0.id) }
+    }
+
+    private static func shellLabel(_ r: ReportedTask) -> String {
+        let text = (r.command ?? r.description ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "shell" : text
     }
 
     private mutating func setState(_ state: SessionState, at index: Int, now: Date) {
@@ -546,8 +773,9 @@ public struct StateMachine: Equatable {
         if let index {
             i = index
         } else {
+            // A session Vigil first sees counts as active now: it may already have shells or agents running.
             sessions.append(Session(id: hook.sessionID, cwd: hook.cwd, pid: hook.pid, state: .idle,
-                                    startedAt: now, lastEventAt: now, stateSince: now))
+                                    startedAt: now, lastEventAt: now, stateSince: now, lastActivityAt: now))
             i = sessions.count - 1
         }
         sessions[i].lastEventAt = now
@@ -565,6 +793,7 @@ public struct StateMachine: Equatable {
     @discardableResult
     private mutating func removeSession(at index: Int, reason: SessionEndReason, now: Date) -> SessionRecord {
         let s = sessions.remove(at: index)
+
         return SessionRecord(id: s.id, project: s.projectName, startedAt: s.startedAt,
                              duration: max(0, now.timeIntervalSince(s.startedAt)), reason: reason,
                              maxSubagents: s.maxSubagents, subagentTime: s.subagentTime(at: now))

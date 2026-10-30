@@ -76,7 +76,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var sound = SoundSettings()
     /// Settings migrations applied so far (nil = saved before migrations existed).
     public var revision: Int?
-    public static let currentRevision = 3
+    public static let currentRevision = 4
     public init() { revision = Self.currentRevision }
 
     // Every key is optional: settings saved by an older build (without `ui`, say) must load, not reset to defaults.
@@ -98,10 +98,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// through Remote Control needs the Mac awake). A policy still at the old default (treat as idle) moves to
     /// the new default once; a policy the user changed away from the old default is kept. Each step runs once,
     /// so choosing the old value again later sticks.
+    /// Revision 4: the 2-hour keep-awake limit cut long work with the lid closed. The silence failsafe (30 min
+    /// without any activity) replaced it, and the absolute limit moved to 12 hours for everyone.
     public mutating func migrate() {
         let from = revision ?? 1
         if from < 2, config.lowBatteryThreshold == 15 { config.lowBatteryThreshold = 5 }
         if from < 3, config.notificationPolicy == .treatAsIdle { config.notificationPolicy = .keepAwake }
+        if from < 4, config.maxKeepAwake < Config().maxKeepAwake { config.maxKeepAwake = Config().maxKeepAwake }
         revision = Self.currentRevision
     }
 }
