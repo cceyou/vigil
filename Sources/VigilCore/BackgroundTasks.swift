@@ -48,6 +48,9 @@ public struct BackgroundShell: Equatable, Identifiable, Sendable {
     public var startedAt: Date
     /// The process was found among the descendants of the session's Claude process.
     public var processFound = false
+    /// The last process sample that still found its process alive. A shell seen alive recently is work in itself:
+    /// the silence failsafe never cuts it, however quiet it is (`sleep 2400`, `gh run watch`).
+    public var processSeenAt: Date?
     /// Average CPU of its process tree over the last `ShellActivity.window`; nil until there is that much history.
     public var cpuPercent: Double?
     /// "Ignorovat" in the popover or the card: it no longer keeps the Mac awake.
@@ -60,6 +63,11 @@ public struct BackgroundShell: Equatable, Identifiable, Sendable {
     }
 
     public var isServer: Bool { ServerCommands.isServer(command) }
+
+    /// Its process was found alive within `within` seconds of `now`.
+    public func processAlive(at now: Date, within: TimeInterval = 60) -> Bool {
+        processSeenAt.map { now.timeIntervalSince($0) < within } ?? false
+    }
 }
 
 /// Long-running servers: they run until stopped, so only CPU use says whether they are doing work.

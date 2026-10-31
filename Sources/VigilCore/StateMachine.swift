@@ -479,17 +479,22 @@ public struct StateMachine: Equatable {
     }
 
     /// The one place that decides whether a session keeps the Mac awake. Work (turn, subagents, shells, recent
-    /// activity) stops counting after `silenceLimit` without any activity; waiting has its own limit (`maxWaiting`).
+    /// activity) stops counting after `silenceLimit` without any activity, except a shell whose process is still
+    /// alive: that is work until it ends (the 12-hour limit still applies). The failsafe is for signals without a
+    /// live process behind them, such as a subagent whose SubagentStop never came. Waiting has its own limit.
     public func busyReasons(_ s: Session) -> [BusyReason] {
         let now = clock
         var work: [BusyReason] = []
         if s.state == .working { work.append(.turn) }
         if !s.subagents.isEmpty { work.append(.subagents(s.subagents.count)) }
-        work += s.shells.filter { shellCounts($0, at: now) }.map { .shell($0.command) }
+        let shells = s.shells.filter { shellCounts($0, at: now) }
+        work += shells.map { .shell($0.command) }
         if config.recentActivityWindow > 0, now.timeIntervalSince(s.lastActivityAt) < config.recentActivityWindow {
             work.append(.recentActivity)
         }
-        if config.silenceLimit > 0, now.timeIntervalSince(s.lastActivityAt) >= config.silenceLimit { work = [] }
+        if config.silenceLimit > 0, now.timeIntervalSince(s.lastActivityAt) >= config.silenceLimit {
+            work = shells.filter { $0.processAlive(at: now) }.map { .shell($0.command) }
+        }
         if s.state == .waiting, config.notificationPolicy == .keepAwake, !s.waitExpired { work.insert(.waiting, at: 0) }
         return work
     }
@@ -622,7 +627,10 @@ public struct StateMachine: Equatable {
                         sessions[i].lastActivityAt = now
                         continue
                     }
-                    if seen.found { sessions[i].shells[k].processFound = true }
+                    if seen.found {
+                        sessions[i].shells[k].processFound = true
+                        sessions[i].shells[k].processSeenAt = now
+                    }
                     if let cpu = seen.cpuPercent { sessions[i].shells[k].cpuPercent = cpu }
                 }
             }

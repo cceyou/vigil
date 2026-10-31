@@ -99,6 +99,7 @@ final class AppModel {
     @ObservationIgnored private var jobs: AsyncStream<Job>.Continuation!
     @ObservationIgnored private var timerTask: Task<Void, Never>?
     @ObservationIgnored private var tickCount = 0
+    @ObservationIgnored private var dryRunIdleLogged = false
     /// Finds Claude's background shells among its processes and watches their CPU.
     @ObservationIgnored private var shellTracker = ShellProcessTracker()
     /// Last logged busy reasons per session: only changes are logged.
@@ -300,12 +301,18 @@ final class AppModel {
         }
         loggedBusy = current
         guard settings.dryRun else { return }
-        let busy = machine.sessions.flatMap { machine.busyReasons($0) }
+        let busy = machine.sessions.compactMap { s -> String? in
+            let reasons = machine.busyReasons(s)
+            return reasons.isEmpty ? nil : "\(s.projectName) (\(s.id.prefix(8))) \(reasons.map(\.logText).joined(separator: ", "))"
+        }
         if !busy.isEmpty, machine.phase == .working, Date().timeIntervalSince(lastDryRunBusyLog) >= 60 {
             lastDryRunBusyLog = Date()
-            log.info("[dry-run] would NOT sleep: \(busy.map(\.logText).joined(separator: ", "))")
-        } else if busy.isEmpty {
+            dryRunIdleLogged = false
+            log.info("[dry-run] would NOT sleep: \(busy.joined(separator: "; "))")
+        } else if busy.isEmpty, !machine.keepAwakeActive(Date()), !dryRunIdleLogged {
             lastDryRunBusyLog = .distantPast
+            dryRunIdleLogged = true
+            log.info("[dry-run] would sleep: nothing busy, after the \(Int(machine.config.graceSeconds)) s grace")
         }
     }
 

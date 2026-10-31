@@ -259,6 +259,63 @@ import Testing
         #expect(m.busyReasons(m.sessions[0]).isEmpty)
     }
 
+    /// `sleep 2400` (or `gh run watch`): one quiet process, no new children, no CPU, no hooks for 40 minutes. Its
+    /// process is alive in every sample, so the silence failsafe never cuts it; when it ends, the grace starts.
+    @Test func aQuietShellWithALiveProcessOutlastsTheSilenceFailsafe() {
+        var m = live()
+        _ = m.handle(event(.postToolUse, shell: shell("s", "sleep 2400")), at: at(0))
+        _ = m.handle(event(.stop, tasks: [shell("s", "sleep 2400")]), at: at(1))
+        for t in stride(from: 5.0, to: 2400, by: 5) {
+            _ = m.handle(.processes([ProcessObservation(sessionID: "a", activity: false, shells: ["s": ShellObservation(found: true)])]), at: at(t))
+            #expect(m.handle(.tick, at: at(t)).power.isEmpty)
+        }
+        #expect(m.busyReasons(m.sessions[0]) == [.shell("sleep 2400")]) // 40 min after the last hook
+        #expect(m.phase == .working)
+        // The process ends: the session has nothing left, the grace starts once the activity window is over.
+        _ = m.handle(.processes([ProcessObservation(sessionID: "a", activity: true, shells: ["s": ShellObservation(found: false, exited: true)])]), at: at(2400))
+        #expect(m.sessions[0].shells.isEmpty)
+        #expect(m.handle(.tick, at: at(2519)).isEmpty)
+        #expect(m.handle(.tick, at: at(2520)) == [.showCountdown(deadline: at(2550))])
+    }
+
+    /// The failsafe still cuts what has no live process: a reported shell that was never found, a shell whose
+    /// samples stopped, and a subagent whose SubagentStop never came.
+    @Test func theSilenceFailsafeCutsSignalsWithoutALiveProcess() {
+        var notFound = live()
+        _ = notFound.handle(event(.stop, tasks: [shell("s", "sleep 3600")]), at: at(0))
+        for t in stride(from: 5.0, to: 1800, by: 5) {
+            _ = notFound.handle(.processes([ProcessObservation(sessionID: "a", activity: false, shells: ["s": ShellObservation(found: false)])]), at: at(t))
+        }
+        #expect(notFound.handle(.tick, at: at(1800)) == [.showCountdown(deadline: at(1830))])
+
+        var stale = live()
+        _ = stale.handle(event(.stop, tasks: [shell("s", "sleep 3600")]), at: at(0))
+        _ = stale.handle(.processes([ProcessObservation(sessionID: "a", activity: false, shells: ["s": ShellObservation(found: true)])]), at: at(5))
+        // No sample since 5 s (Vigil could not read the table): not "alive" any more, so the failsafe applies.
+        #expect(stale.handle(.tick, at: at(1800)) == [.showCountdown(deadline: at(1830))])
+
+        var agent = live()
+        _ = agent.handle(event(.userPromptSubmit), at: at(0))
+        _ = agent.handle(event(.subagentStart, agent: "x", type: "general-purpose"), at: at(1))
+        _ = agent.handle(event(.stop, tasks: [self.agent("x")]), at: at(2))
+        #expect(agent.busyReasons(agent.sessions[0]).contains(.subagents(1)))
+        // SubagentStart at 1 s was the last activity; a Stop listing the agent is not activity.
+        #expect(agent.handle(.tick, at: at(1800)).isEmpty)
+        #expect(agent.handle(.tick, at: at(1801)) == [.showCountdown(deadline: at(1831))])
+    }
+
+    /// A live shell next to a stuck subagent: after the silence only the shell counts, and it keeps the Mac awake.
+    @Test func afterTheSilenceOnlyTheLiveShellCounts() {
+        var m = live()
+        _ = m.handle(event(.subagentStart, agent: "x", type: "general-purpose"), at: at(0))
+        _ = m.handle(event(.stop, tasks: [agent("x"), shell("s", "gh run watch 123")]), at: at(0))
+        for t in stride(from: 5.0, through: 1900, by: 5) {
+            _ = m.handle(.processes([ProcessObservation(sessionID: "a", activity: false, shells: ["s": ShellObservation(found: true)])]), at: at(t))
+        }
+        #expect(m.busyReasons(m.sessions[0]) == [.shell("gh run watch 123")])
+        #expect(m.handle(.tick, at: at(1900)).power.isEmpty)
+    }
+
     @Test func longWorkWithTheLidClosedRunsUntilTheTwelveHourLimit() {
         var m = live()
         _ = m.handle(event(.userPromptSubmit), at: at(0))
