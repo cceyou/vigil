@@ -1,5 +1,7 @@
 # Vigil
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black) ![Swift](https://img.shields.io/badge/Swift-SwiftUI-orange)
+
 A macOS menu bar app that keeps your MacBook **awake with the lid closed while Claude Code is working**, then puts it to **sleep once Claude Code has finished**, but only when you are away. With the lid open it never yanks the Mac to sleep under you (see [The sleep gate](#the-sleep-gate)).
 
 - Menu bar only (no Dock icon, no Cmd+Tab entry). Click the icon for the popover (a black "Live Activity" style card), right-click for Toggle / Sleep now / Settings / Quit.
@@ -296,3 +298,11 @@ The Command Line Tools ship without SwiftUI's macro plugin, so views cannot use 
 - The usage numbers are only as fresh as the last status line update from a running Claude Code session; the card says how old they are.
 - `--snapshot` renders offscreen, where Liquid Glass and materials draw flat; the live card is translucent.
 - The lid-closed / real-sleep behavior (checklist steps 4-5) has to be verified by hand on your machine.
+
+## Contributing
+
+Issues and pull requests are welcome. Please run `./build.sh --test` before opening a PR; the build fails if a user-facing string is missing its Czech translation, so add new strings to `Resources/Localizable.xcstrings`.
+
+## License
+
+[MIT](LICENSE). Vigil is an independent project and is not affiliated with or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
